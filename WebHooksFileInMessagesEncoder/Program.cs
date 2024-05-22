@@ -2,7 +2,6 @@
 using JSPasteNet;
 using System.Reflection;
 using System.Text;
-using System.Text.Json;
 
 namespace WebHooksFileInMessagesEncoder
 {
@@ -63,7 +62,6 @@ namespace WebHooksFileInMessagesEncoder
 
             return data;
         }
-           
 
         [STAThread]
         private static void Main(string[] args)
@@ -88,7 +86,6 @@ namespace WebHooksFileInMessagesEncoder
             //Console.WriteLine(string.Join(" ", args));
 
             WebHookHelper webHookHelper = null;
-
 
             /*Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
             Console.WriteLine(BitConverter.ToString(new byte[] {0x22,0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress().Decompress()));
@@ -247,7 +244,7 @@ namespace WebHooksFileInMessagesEncoder
 
                 if (args.Length < 2)
                 {
-                    Console.ForegroundColor = Console.BackgroundColor; 
+                    Console.ForegroundColor = Console.BackgroundColor;
                     Console.ReadLine();
                 }
 

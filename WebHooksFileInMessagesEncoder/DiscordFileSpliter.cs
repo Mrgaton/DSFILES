@@ -86,11 +86,14 @@ namespace DSFiles
             {
                 case 'f':
                     return CompressionLevel.Fastest;
+
                 case 'o':
                     return CompressionLevel.Optimal;
+
                 case 's':
                     return CompressionLevel.SmallestSize;
-                default: 
+
+                default:
                     return CompressionLevel.NoCompression;
             }
         }
@@ -100,7 +103,7 @@ namespace DSFiles
             ConsoleColor oldColor = Console.ForegroundColor;
             Console.ForegroundColor = Console.BackgroundColor;
             char response = char.MinValue;
-            while ((response = char.ToLower(Console.ReadKey().KeyChar)) != null && !options.Any(c => char.ToLower(c) == response)) 
+            while ((response = char.ToLower(Console.ReadKey().KeyChar)) != null && !options.Any(c => char.ToLower(c) == response))
             {
                 Console.Write('\b');
             }
@@ -108,6 +111,7 @@ namespace DSFiles
 
             return response;
         }
+
         /*private static async Task<MemoryStream> TempolarStream(dynamic memStream, bool compress)
         {
             if (!compress) return memStream;
@@ -183,7 +187,7 @@ namespace DSFiles
                 int bytesRead;
 
                 int consoleTop = Console.CursorTop - 1;
-              
+
                 using (var compStream = new BrotliStream(tempCompressorStream, compressionLevel, true))
                 {
                     while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
@@ -278,7 +282,7 @@ namespace DSFiles
                         long average = (timeList.Sum() / timeList.Count);
                         long totalTime = (messagesToSend - i) * average;
 
-                        Console.WriteLine("Uploaded " + messagesSended + "/" + messagesToSend + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(buffer))  + " " + buffer.Length);
+                        Console.WriteLine("Uploaded " + messagesSended + "/" + messagesToSend + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(buffer)) + " " + buffer.Length);
 
                         if (messagesSended == messagesToSend) break;
 
@@ -345,7 +349,7 @@ namespace DSFiles
                 Stream? originalStream = compressed ? stream : null;
 
                 if (compressed) stream = StreamCompression.GetCompressorStream((ulong)stream.Length * 2);
-                
+
                 ulong channelId = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
 
                 ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - sizeof(ulong) - sizeof(bool)));
@@ -410,7 +414,7 @@ namespace DSFiles
 
                             downloaded += dataPart.Length;
 
-                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss")+ " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(UXOR(dataPart,XorKey))) +" " + dataPart.Length);
+                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(UXOR(dataPart, XorKey))) + " " + dataPart.Length);
 
                             await stream.WriteAsync(UXOR(dataPart, XorKey), 0, dataPart.Length);
                         }
@@ -434,7 +438,6 @@ namespace DSFiles
                     //{
                     for (int i = 0; i < attachements; i++)
                     {
-
                     }
                     //}
 
