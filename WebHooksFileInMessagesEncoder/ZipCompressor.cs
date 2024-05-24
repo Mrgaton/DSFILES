@@ -4,27 +4,34 @@ namespace DSFiles
 {
     internal class ZipCompressor
     {
-        public static void CompressZip(ref Stream stream, string[] pathArrays)
+        public static string GetRootPath(string[] pathArrays)
+        {
+            string commonRoot = Path.GetDirectoryName(pathArrays[0]);
+
+            for (int i = 1; i < pathArrays.Length; i++)
+            {
+                while (!pathArrays[i].StartsWith(commonRoot,StringComparison.InvariantCultureIgnoreCase))
+                {
+                    commonRoot = Path.GetDirectoryName(commonRoot);
+                }
+            }
+
+            return commonRoot;
+        }
+        public static void CompressZip(ref Stream stream, string[] pathArrays) => CompressZip(ref stream, GetRootPath(pathArrays), pathArrays);
+        public static void CompressZip(ref Stream stream,string rootPath ,string[] pathArrays)
         {
             ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true);
 
-            int i = 0;
+            string relativePath = GetRootPath(pathArrays);
 
-            string relativePath = string.Empty;
-
-            while (relativePath == string.Empty)
-            {
-                if (File.Exists(pathArrays[i])) relativePath = Path.GetDirectoryName(pathArrays[0]);
-                else if (Directory.Exists(pathArrays[i++])) relativePath = Path.GetDirectoryName(pathArrays[0]);
-            }
-
-            Directory.SetCurrentDirectory(relativePath);
+            //Directory.SetCurrentDirectory(relativePath);
 
             foreach (string path in pathArrays)
             {
                 if (File.Exists(path))
                 {
-                    archive.CreateEntryFromFile(path, Path.GetFileName(path), CompressionLevel.SmallestSize);
+                    AddFile(ref archive, "", Path.GetFileName(path));
                 }
                 else if (Directory.Exists(path))
                 {
@@ -34,6 +41,12 @@ namespace DSFiles
 
             archive.Dispose();
         }
+        private  static void AddFile(ref ZipArchive archive,string relativePath,string file)
+        {
+            Console.WriteLine("Adding to zip: " + file);
+
+            archive.CreateEntryFromFile(Path.Combine(relativePath, file), file, CompressionLevel.SmallestSize);
+        }
 
         private static void AddDirectory(ref ZipArchive archive, string relativePath, string path)
         {
@@ -41,14 +54,14 @@ namespace DSFiles
 
             archive.CreateEntry(tarjetPath, CompressionLevel.SmallestSize);
 
-            foreach (var file in Directory.GetFiles(tarjetPath))
+            foreach (string file in Directory.EnumerateFiles(tarjetPath))
             {
-                archive.CreateEntryFromFile(Path.Combine(relativePath, file), file, CompressionLevel.SmallestSize);
+                AddFile(ref archive, relativePath, file);
             }
 
-            foreach (var directory in Directory.GetDirectories(tarjetPath))
+            foreach (string dir in Directory.EnumerateDirectories(tarjetPath))
             {
-                AddDirectory(ref archive, relativePath, Path.Combine(relativePath, directory));
+                AddDirectory(ref archive, relativePath, Path.Combine(relativePath, dir));
             }
         }
     }

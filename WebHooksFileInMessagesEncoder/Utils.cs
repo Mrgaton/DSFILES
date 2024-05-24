@@ -59,11 +59,11 @@ namespace WebHooksFileInMessagesEncoder
 
         public static byte[] Decompress(this byte[] data)
         {
-            using (MemoryStream input = new MemoryStream(data.Length)) //+ CompressHeader.Length))
+            using (MemoryStream input = new MemoryStream(data)) //+ CompressHeader.Length))
             {
-                input.Write(data);
+                //input.Write(data);
                 //input.Write(CompressHeader);
-                input.Position = 0;
+                //input.Position = 0;
 
                 using (MemoryStream output = new MemoryStream())
                 {

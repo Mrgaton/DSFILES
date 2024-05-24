@@ -1,6 +1,7 @@
 ﻿using DSFiles;
 using JSPasteNet;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
 
@@ -32,7 +33,7 @@ namespace WebHooksFileInMessagesEncoder
 
         private static StreamWriter UploadedFilesWriter = File.AppendText(UploadedFiles);
 
-        private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper) => Encoding.UTF8.GetBytes(fileName).ToBase64Url() + ":" + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
+        private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper) => Encoding.UTF8.GetBytes(fileName).Compress().ToBase64Url() + ":" + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
 
         private static string WriteUploaded(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper)
         {
@@ -59,6 +60,7 @@ namespace WebHooksFileInMessagesEncoder
             catch (Exception ex)
             {
                 Console.WriteLine(ex.ToString());
+                Console.WriteLine();
             }
 
             return data;
@@ -67,12 +69,6 @@ namespace WebHooksFileInMessagesEncoder
         [STAThread]
         private static void Main(string[] args)
         {
-            var st = (Stream)File.Open("mi.zip", FileMode.OpenOrCreate, FileAccess.ReadWrite);
-           ZipCompressor.CompressZip(ref st, ["C:\\Users\\Mrgaton\\Downloads\\Bad_Piggies_main_theme_but_it_never_starts.mp4", "C:\\Users\\Mrgaton\\Downloads\\pato (8).exe", "C:\\Users\\Mrgaton\\Downloads\\VirusTotal - File - 4c83894c00aa9f55f7e0f70807210896ba32e1222d4ff1d0b9487af81f328f36_files", "C:\\Users\\Mrgaton\\Downloads\\WebHooksFileInMessagesEncoder-main"]);
-            st.Dispose();
-
-            Environment.Exit(1);
-
             //args = ["C:\\Users\\mrgaton\\Downloads\\Casanova.157,88 Kbit_s.mp3"];
 
             if (!Debugger.IsAttached)
@@ -97,7 +93,7 @@ namespace WebHooksFileInMessagesEncoder
 
             WebHookHelper webHookHelper = null;
 
-            /*Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
+            Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
             Console.WriteLine(BitConverter.ToString(new byte[] {0x22,0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress().Decompress()));
             Console.WriteLine();
 
@@ -123,7 +119,7 @@ namespace WebHooksFileInMessagesEncoder
 
             Console.WriteLine();
             Console.WriteLine();
-            Console.ReadLine();*/
+            Console.ReadLine();
 
             try
             {
@@ -146,10 +142,13 @@ namespace WebHooksFileInMessagesEncoder
 
                     Console.WriteLine("Removing file chunkks (" + ids.Length + ")");
                     webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
+                    return;
                 }
                 else if (args[0].Equals("download", StringComparison.InvariantCultureIgnoreCase))
                 {
                     DiscordFilesSpliter.Decode(args[1].Split('/')[0].Split(':').Last(), args[2]).GetAwaiter().GetResult();
+
+                    return;
                 }
                 else if (args[0].Equals("upload", StringComparison.InvariantCultureIgnoreCase))
                 {
@@ -162,9 +161,8 @@ namespace WebHooksFileInMessagesEncoder
                     UploadedFilesWriter.Flush();
 
                     Console.Write("FileSeed: " + jspLink);
+                    return;
                 }
-
-                Environment.Exit(0);
             }
 
             if (File.Exists(UnsendedIds))
@@ -234,20 +232,43 @@ namespace WebHooksFileInMessagesEncoder
 
                 string filePath = args[0];
 
-                var stream = File.OpenRead(filePath);
+                if (Directory.Exists(filePath)) args = Directory.GetFiles(filePath).Concat(Directory.GetDirectories(filePath)).ToArray();
 
-                var result = DiscordFilesSpliter.EncodeCore(webHookHelper, stream, DiscordFilesSpliter.ShouldCompress(Path.GetExtension(filePath), stream.Length)).Result;
+                CompressionLevel compLevel = CompressionLevel.NoCompression;
+                Stream stream;
+
+                if (args.Length == 1)
+                {
+                    stream = File.OpenRead(filePath);
+                    compLevel = DiscordFilesSpliter.ShouldCompress(Path.GetExtension(filePath), stream.Length);
+                }
+                else
+                {
+                    stream = new MemoryStream();
+
+                    string rootPath = ZipCompressor.GetRootPath(args);
+                    filePath = rootPath + ".zip";
+                    ZipCompressor.CompressZip(ref stream, rootPath, args);
+                    stream.Position = 0;
+
+                    Console.WriteLine();
+                }
+
+                var result = DiscordFilesSpliter.EncodeCore(webHookHelper, stream, compLevel).Result;
+
+                stream.Dispose();
 
                 string fileName = Path.GetFileName(filePath);
 
                 string fileSeed = WriteUploaded(fileName, result.seed, result.secret, webHookHelper);
 
-                UploadedFilesWriter.WriteLine(fileName + "; " + fileSeed);
+                UploadedFilesWriter.WriteLine();
+                UploadedFilesWriter.WriteLine(fileName + " = " + fileSeed);
                 UploadedFilesWriter.Flush();
 
                 var jspLink = SendJspaste(fileSeed);
 
-                UploadedFilesWriter.WriteLine(fileName + "; " + jspLink);
+                UploadedFilesWriter.WriteLine(fileName + " = " + jspLink);
                 UploadedFilesWriter.Flush();
 
                 try
@@ -258,12 +279,8 @@ namespace WebHooksFileInMessagesEncoder
 
                 Console.Write("File seed: " + jspLink);
 
-                if (args.Length < 2)
-                {
-                    Console.ForegroundColor = Console.BackgroundColor;
-                    Console.ReadLine();
-                }
-
+                Console.ForegroundColor = Console.BackgroundColor;
+                Console.ReadLine();
                 Environment.Exit(0);
             }
 
@@ -280,7 +297,7 @@ namespace WebHooksFileInMessagesEncoder
             string[] fileDataSplited = fileData.Split('/')[0].Split(':');
 
             string seed = fileDataSplited[1];
-            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url());
+            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().Decompress());
 
             SaveFileDialog sfd = new SaveFileDialog()
             {

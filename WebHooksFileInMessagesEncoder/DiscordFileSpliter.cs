@@ -458,7 +458,7 @@ namespace DSFiles
 
         //private static Regex alphanumericRegex = new Regex("[^a-zA-Z0-9 -]");
 
-        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes(channelId - lastMessage ^ (ulong)index)).TrimEnd('=') + '_' + (amount - index);
+        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimEnd('=') + '_' + (amount - index);
 
         public static void WriteBuffer(byte[] buffer, dynamic Str) => Str.Write(buffer, 0, buffer.Length);
 
