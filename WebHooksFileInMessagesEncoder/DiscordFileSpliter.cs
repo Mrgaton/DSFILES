@@ -1,7 +1,5 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using WebHooksFileInMessagesEncoder;
@@ -10,7 +8,6 @@ namespace DSFiles
 {
     public static class DiscordFilesSpliter
     {
-        public static SHA256 hashAlg = SHA256.Create();
         public static StreamWriter UnsendedIdsWriter { get => File.AppendText(Program.UnsendedIds); }
 
         private static byte[] XorKey = Convert.FromBase64String("cQhZp1pcNUTi9+xi0JyoAyZ8Nc6KxtMTToWnSGPy2i4ICVbE9Byh6pkm88BoCVPi5lirZ2DG+x1u10XgE2tOjKBTIth+wIgKHdoFo9upjiPU5LlGnvcyk6M6CnehPmJoZIvRT63ac4kXXqZ3Y6SNLmdEZzMlIya7bDK3FSSKgbPE9dUIU2rr2ZZeawAXfd02FSbrB6Q0jYma8tLoTDiAIKKkEbPqNnEUeszO3darMQHO3hhTQ649uvMT8zYoBel8mwEcAhg+Y6IOD3kAw9bWlFwfJjyB+3zseoTDq9SMT23i3owa6pKGwyI4jAeUpk6jWALXOtyZ/Hu9veIUQNOG");
@@ -203,20 +200,16 @@ namespace DSFiles
                         Console.SetCursorPosition(0, consoleTop);
                     }
 
-                    Console.WriteLine("");
-
                     await compStream.FlushAsync();
                 }
 
                 await dataStream.DisposeAsync();
-
                 dataStream = tempCompressorStream;
-
                 long compressedSize = dataStream.Length;
-
-                Console.WriteLine("");
                 Console.WriteLine("File compressed " + Math.Round(((compressedSize / (double)originalFileSize) * 100), 3) + "% compress ratio new size " + ByteSizeToString(compressedSize));
                 Console.WriteLine();
+
+                dataStream.Position = 0;
             }
 
             using (MemoryStream seedData = new MemoryStream())
@@ -224,16 +217,16 @@ namespace DSFiles
                 seedData.WriteByte(compress ? (byte)255 : (byte)0);
                 seedData.Write(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
 
-                List<ulong> attachementsIdsList = new List<ulong>();
-                List<ulong> messagesIdsList = new List<ulong>();
+                int messagesToSend = (int)((ulong)dataStream.Length / amountPerFile) + 1, messagesSended = 0;
+
+                ulong[] attachementsIdsList = new ulong[messagesToSend];
+                ulong[] messagesIdsList = new ulong[messagesToSend];
 
                 using (var tempIdsWriter = UnsendedIdsWriter)
                 {
                     ulong lastAttachementId = int.MaxValue;
 
                     long totalWrited = 0;
-
-                    int messagesToSend = (int)((ulong)dataStream.Length / amountPerFile) + 1, messagesSended = 0;
 
                     Console.WriteLine("Starting upload of " + messagesToSend + " chunks");
                     Console.WriteLine();
@@ -264,8 +257,8 @@ namespace DSFiles
                             tempIdsWriter.WriteLine(messageId.ToString());
                             tempIdsWriter.Flush();
 
-                            attachementsIdsList.Add(attachementId);
-                            messagesIdsList.Add(messageId);
+                            attachementsIdsList[i - 1] = attachementId;
+                            messagesIdsList[i - 1] = messageId;
                         }
                         catch (Exception ex)
                         {
@@ -282,7 +275,7 @@ namespace DSFiles
                         long average = (timeList.Sum() / timeList.Count);
                         long totalTime = (messagesToSend - i) * average;
 
-                        Console.WriteLine("Uploaded " + messagesSended + "/" + messagesToSend + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(buffer)) + " " + buffer.Length);
+                        Console.WriteLine("Uploaded " + messagesSended + "/" + messagesToSend + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
                         if (messagesSended == messagesToSend) break;
 
@@ -300,9 +293,9 @@ namespace DSFiles
 
                 File.WriteAllBytes(Program.UnsendedIds, []);
 
-                WriteBuffer(CompressArray(attachementsIdsList.ToArray()), seedData);
+                WriteBuffer(CompressArray(attachementsIdsList), seedData);
 
-                return (seedData.ToArray(), CompressArray(messagesIdsList.ToArray()));
+                return (seedData.ToArray(), CompressArray(messagesIdsList));
             }
         }
 
@@ -414,12 +407,14 @@ namespace DSFiles
 
                             downloaded += dataPart.Length;
 
-                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + " hash " + Base64Url.ToBase64Url(hashAlg.ComputeHash(UXOR(dataPart, XorKey))) + " " + dataPart.Length);
+                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
-                            await stream.WriteAsync(UXOR(dataPart, XorKey), 0, dataPart.Length);
+                            var decoded = UXOR(dataPart, XorKey);
+
+                            await stream.WriteAsync(decoded, 0, dataPart.Length);
                         }
 
-                        if (!compressed) await stream.FlushAsync();
+                        await stream.FlushAsync();
 
                         part += RefreshUrlsChunkSize;
                     }
@@ -463,7 +458,7 @@ namespace DSFiles
 
         //private static Regex alphanumericRegex = new Regex("[^a-zA-Z0-9 -]");
 
-        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes(channelId - lastMessage)).TrimEnd('=') + '_' + (amount - index);
+        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes(channelId - lastMessage ^ (ulong)index)).TrimEnd('=') + '_' + (amount - index);
 
         public static void WriteBuffer(byte[] buffer, dynamic Str) => Str.Write(buffer, 0, buffer.Length);
 
@@ -702,16 +697,16 @@ namespace DSFiles
         private static byte[] DXOR(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
-            int max = data.Length - 1;
-            for (int i = 0; i < data.Length; i++) result[i] = (byte)(data[max - i] ^ (key[i % key.Length] + i));
+            int lastIndex = data.Length - 1;
+            for (int i = 0; i < data.Length; i++) result[i] = (byte)(data[lastIndex - i] ^ (byte)(key[i % key.Length] + i));
             return result;
         }
 
         private static byte[] UXOR(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
-            int max = data.Length - 1;
-            for (int i = data.Length - 1; i >= 0; i--) result[max - i] = (byte)(data[i] ^ (key[i % key.Length] + i));
+            int lastIndex = data.Length - 1;
+            for (int i = data.Length - 1; i >= 0; i--) result[lastIndex - i] = (byte)(data[i] ^ (byte)(key[i % key.Length] + i));
             return result;
         }
     }

@@ -1,5 +1,6 @@
 ﻿using DSFiles;
 using JSPasteNet;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 
@@ -66,14 +67,23 @@ namespace WebHooksFileInMessagesEncoder
         [STAThread]
         private static void Main(string[] args)
         {
+            var st = (Stream)File.Open("mi.zip", FileMode.OpenOrCreate, FileAccess.ReadWrite);
+           ZipCompressor.CompressZip(ref st, ["C:\\Users\\Mrgaton\\Downloads\\Bad_Piggies_main_theme_but_it_never_starts.mp4", "C:\\Users\\Mrgaton\\Downloads\\pato (8).exe", "C:\\Users\\Mrgaton\\Downloads\\VirusTotal - File - 4c83894c00aa9f55f7e0f70807210896ba32e1222d4ff1d0b9487af81f328f36_files", "C:\\Users\\Mrgaton\\Downloads\\WebHooksFileInMessagesEncoder-main"]);
+            st.Dispose();
+
+            Environment.Exit(1);
+
             //args = ["C:\\Users\\mrgaton\\Downloads\\Casanova.157,88 Kbit_s.mp3"];
 
-            /*AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) =>
+            if (!Debugger.IsAttached)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(e.ExceptionObject.ToString());
-                Console.ReadKey();
-            };*/
+                AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) =>
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine(e.ExceptionObject.ToString());
+                    Console.ReadKey();
+                };
+            }
 
             /*var rer =  File.ReadAllBytes("tempStream.tmp").Decompress();
 
@@ -151,7 +161,7 @@ namespace WebHooksFileInMessagesEncoder
                     UploadedFilesWriter.WriteLine(args[1] + "; " + jspLink);
                     UploadedFilesWriter.Flush();
 
-                    Console.WriteLine("FileSeed: " + jspLink);
+                    Console.Write("FileSeed: " + jspLink);
                 }
 
                 Environment.Exit(0);
@@ -240,7 +250,13 @@ namespace WebHooksFileInMessagesEncoder
                 UploadedFilesWriter.WriteLine(fileName + "; " + jspLink);
                 UploadedFilesWriter.Flush();
 
-                Console.WriteLine("File seed: " + jspLink);
+                try
+                {
+                    Clipboard.SetText(jspLink);
+                }
+                catch { }
+
+                Console.Write("File seed: " + jspLink);
 
                 if (args.Length < 2)
                 {
