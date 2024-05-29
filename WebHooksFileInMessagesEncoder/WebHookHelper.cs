@@ -1,5 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace WebHooksFileInMessagesEncoder
@@ -53,7 +55,39 @@ namespace WebHooksFileInMessagesEncoder
             token = (string)json["token"];
         }
 
-        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":\"" + content + "\",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
+        public async Task SendMessageInChunks(string content)
+        {
+            string[] splitted = content.Split('\n');
+
+            for (int i = 0; i < splitted.Length; i++)
+            {
+                StringBuilder sb = new StringBuilder();
+
+                string line = "";
+
+                while (sb.Length + line.Length < 2000)
+                {
+                    if (i > splitted.Length - 1) break;
+
+                    line = splitted[i];
+
+                    if (sb.Length + line.Length > 2000) break;
+
+                    sb.AppendLine(line);
+                    i++;
+                }
+
+                i--;
+
+                await SendMessage(sb.ToString().Trim().Replace("\r", ""));
+            }
+        }
+
+        public async Task<HttpStatusCode> SendMessage(string content) => (await SendMessage(content, Application.ProductName));
+
+        public async Task<HttpStatusCode> SendMessage(string content, string username) => (await SendMessage(content, username, ""));
+
+        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + JsonSerializer.Serialize(content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
 
         public async Task<string> GetMessage(ulong id) => await (await MakeRequest(HttpMethod.Get, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
@@ -90,29 +124,40 @@ namespace WebHooksFileInMessagesEncoder
         public async Task<string> PostFileToWebhook(byte[] data, string fileName)
         {
             MultipartFormDataContent form = new MultipartFormDataContent
-                    {
-                        { new ByteArrayContent(data, 0, data.Length), "0", fileName }
-                    };
-
-            using (HttpResponseMessage response = await client.PostAsync(WebHookUrl, form))
             {
-                return await response.Content.ReadAsStringAsync();
+                { new ByteArrayContent(data, 0, data.Length), "0", fileName }
+            };
+
+            using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
+            {
+                return await req.Content.ReadAsStringAsync();
             }
         }
 
         private static async Task<HttpResponseMessage> MakeRequest(HttpMethod method, string url, string content = null, Dictionary<string, string> headers = null)
         {
-            using (HttpRequestMessage request = new HttpRequestMessage(method, url))
+            using (HttpRequestMessage req = new HttpRequestMessage(method, url))
             {
                 if (content != null)
                 {
-                    request.Content = new StringContent(content);
-                    request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    req.Content = new StringContent(content);
+                    req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 }
 
-                if (headers != null) foreach (var header in headers) request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                if (headers != null) foreach (var header in headers) req.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
-                return await client.SendAsync(request);
+                HttpResponseMessage res = await client.SendAsync(req);
+
+                if (res.Headers.RetryAfter != null)
+                {
+                    int time = (int)res.Headers.RetryAfter.Delta.Value.TotalSeconds;
+
+                    Thread.Sleep(time + 1);
+
+                    return await MakeRequest(method, url, content, headers);
+                }
+
+                return res;
             }
         }
     }

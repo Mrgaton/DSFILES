@@ -4,13 +4,15 @@ namespace DSFiles
 {
     internal class ZipCompressor
     {
-        public static string GetRootPath(string[] pathArrays)
+        public static string GetRootPath(params ReadOnlySpan<string> pathArrays)
         {
             string commonRoot = Path.GetDirectoryName(pathArrays[0]);
 
             for (int i = 1; i < pathArrays.Length; i++)
             {
-                while (!pathArrays[i].StartsWith(commonRoot,StringComparison.InvariantCultureIgnoreCase))
+                if (string.IsNullOrEmpty(pathArrays[i])) continue;
+
+                while (!pathArrays[i].StartsWith(commonRoot, StringComparison.InvariantCultureIgnoreCase))
                 {
                     commonRoot = Path.GetDirectoryName(commonRoot);
                 }
@@ -18,17 +20,21 @@ namespace DSFiles
 
             return commonRoot;
         }
+
         public static void CompressZip(ref Stream stream, string[] pathArrays) => CompressZip(ref stream, GetRootPath(pathArrays), pathArrays);
-        public static void CompressZip(ref Stream stream,string rootPath ,string[] pathArrays)
+
+        public static void CompressZip(ref Stream stream, string relativePath, string[] pathArrays)
         {
             ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true);
 
-            string relativePath = GetRootPath(pathArrays);
+            string currentDir = Directory.GetCurrentDirectory();
 
-            //Directory.SetCurrentDirectory(relativePath);
+            Directory.SetCurrentDirectory(relativePath);
 
             foreach (string path in pathArrays)
             {
+                if (string.IsNullOrEmpty(path)) continue;
+
                 if (File.Exists(path))
                 {
                     AddFile(ref archive, "", Path.GetFileName(path));
@@ -39,30 +45,54 @@ namespace DSFiles
                 }
             }
 
+            Directory.SetCurrentDirectory(currentDir);
+
             archive.Dispose();
         }
-        private  static void AddFile(ref ZipArchive archive,string relativePath,string file)
-        {
-            Console.WriteLine("Adding to zip: " + file);
 
-            archive.CreateEntryFromFile(Path.Combine(relativePath, file), file, CompressionLevel.SmallestSize);
+        private static void AddFile(ref ZipArchive archive, string relativePath, string file)
+        {
+            try
+            {
+                Console.WriteLine("Adding to zip: " + file);
+
+                archive.CreateEntryFromFile(Path.Combine(relativePath, file), file, CompressionLevel.SmallestSize);
+            }
+            catch (Exception ex)
+            {
+                HandleException(ref ex);
+            }
         }
 
         private static void AddDirectory(ref ZipArchive archive, string relativePath, string path)
         {
-            string tarjetPath = Path.GetRelativePath(relativePath, path) + '\\';
+            string targetPath = Path.GetRelativePath(relativePath, path) + '\\';
 
-            archive.CreateEntry(tarjetPath, CompressionLevel.SmallestSize);
+            archive.CreateEntry(targetPath, CompressionLevel.SmallestSize);
 
-            foreach (string file in Directory.EnumerateFiles(tarjetPath))
+            foreach (string file in Directory.EnumerateFiles(targetPath)) AddFile(ref archive, relativePath, file);
+
+            foreach (string dir in Directory.EnumerateDirectories(targetPath))
             {
-                AddFile(ref archive, relativePath, file);
+                try
+                {
+                    AddDirectory(ref archive, relativePath, Path.Combine(relativePath, dir));
+                }
+                catch (Exception ex)
+                {
+                    HandleException(ref ex);
+                }
             }
+        }
 
-            foreach (string dir in Directory.EnumerateDirectories(tarjetPath))
-            {
-                AddDirectory(ref archive, relativePath, Path.Combine(relativePath, dir));
-            }
+        private static void HandleException(ref Exception ex)
+        {
+            var oldColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine();
+            Console.WriteLine(ex.ToString());
+            Console.WriteLine();
+            Console.ForegroundColor = oldColor;
         }
     }
 }

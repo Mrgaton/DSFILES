@@ -4,11 +4,13 @@ namespace DSFiles
 {
     internal class StreamCompression
     {
+        public static string tempCompressorPath = Path.Combine(Path.GetTempPath(), "tempStream.tmp");
+
         private static FileStream tempCompressorStream
         {
             get
             {
-                FileStream stream = File.Open("tempStream.tmp", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                FileStream stream = File.Open(tempCompressorPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
                 stream.SetLength(0);
                 return stream;
             }

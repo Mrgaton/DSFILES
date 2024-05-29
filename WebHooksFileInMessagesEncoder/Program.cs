@@ -1,9 +1,9 @@
 ﻿using DSFiles;
 using JSPasteNet;
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Reflection;
 using System.Text;
+using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace WebHooksFileInMessagesEncoder
 {
@@ -31,7 +31,7 @@ namespace WebHooksFileInMessagesEncoder
 
         private const string UploadedFiles = "Uploaded.txt";
 
-        private static StreamWriter UploadedFilesWriter = File.AppendText(UploadedFiles);
+        private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite));
 
         private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper) => Encoding.UTF8.GetBytes(fileName).Compress().ToBase64Url() + ":" + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
 
@@ -39,18 +39,31 @@ namespace WebHooksFileInMessagesEncoder
         {
             var fileSeed = FileSeedToString(fileName, seed, secret, webHookHelper);
 
-            webHookHelper.SendMessage($"FileName: `{fileName}`", Application.ProductName, "").GetAwaiter().GetResult();
-            webHookHelper.SendMessage($"DownloadToken: `{fileSeed.Split('/')[0]}`", Application.ProductName, "").GetAwaiter().GetResult();
-            webHookHelper.SendMessage($"RemoveToken: `{fileSeed.Split('/').Last()}`", Application.ProductName, "").GetAwaiter().GetResult();
+            StringBuilder sb = new StringBuilder();
 
-            return fileSeed;
+            sb.AppendLine($"FileName: `{fileName}`");
+            sb.AppendLine($"DownloadToken: `{fileSeed.Split('/')[0]}`");
+            sb.AppendLine($"RemoveToken: `{fileSeed.Split('/').Last()}`");
+
+            string jspasteSeed = SendJspaste(fileSeed);
+
+            sb.AppendLine($"Shortened: `{jspasteSeed}`");
+
+            webHookHelper.SendMessageInChunks(sb.ToString()).GetAwaiter().GetResult();
+
+            UploadedFilesWriter.WriteLine(sb.ToString());
+            UploadedFilesWriter.Flush();
+
+            return jspasteSeed;
         }
 
         private static string SendJspaste(string data)
         {
+            var version = Assembly.GetEntryAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion;
+
             try
             {
-                return "jsp:/" + JSPasteClient.Publish(data, new DocumentSettings()
+                return "jsp:/" + JSPasteClient.Publish($"#DSFILES {version}\n\n" + data, new DocumentSettings()
                 {
                     LifeTime = TimeSpan.MaxValue,
                     KeyLength = 4,
@@ -66,11 +79,95 @@ namespace WebHooksFileInMessagesEncoder
             return data;
         }
 
+        private static string GetFromJspaste(string data)
+        {
+            return JSPasteClient.Get(data.Split('/').Last(), "hola").Result
+               .Split('\n')
+               .First(l => !string.IsNullOrEmpty(l) && l[0] != '#')
+               .Split('/')[0];
+        }
+
+        /*[DllImport("shell32.dll")]
+        static extern IntPtr SHBrowseForFolder(ref BROWSEINFO lpbi);
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        static extern bool SHGetPathFromIDList(IntPtr pidl, StringBuilder pszPath);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct BROWSEINFO
+        {
+            public IntPtr hwndOwner;
+            public IntPtr pidlRoot;
+            public string pszDisplayName;
+            public string lpszTitle;
+            public uint ulFlags;
+            public IntPtr lpfn;
+            public IntPtr lParam;
+            public int iImage;
+        }
+
+        private static void SelectFolder()
+        {
+            BROWSEINFO bi = new BROWSEINFO
+            {
+                lpszTitle = "Seleciona la carpeta para extraer",
+                pszDisplayName = "sexo",
+                ulFlags = 0x0001 // BIF_RETURNONLYFSDIRS
+            };
+
+            IntPtr pidl = SHBrowseForFolder(ref bi);
+            if (pidl != IntPtr.Zero)
+            {
+                StringBuilder path = new StringBuilder(260); // MAX_PATH
+                if (SHGetPathFromIDList(pidl, path))
+                {
+                    Console.WriteLine($"Selected folder: {path}");
+                }
+            }
+
+           ( new FolderBrowserDialog()
+           {
+               AutoUpgradeEnabled =true,
+               Description="Select folder to extract content",
+               OkRequiresInteraction=false,
+               ShowNewFolderButton=false,
+               UseDescriptionForTitle=true
+           }).ShowDialog();
+        }*/
+
+        private static string sevenZipPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"7-Zip\");
+
+        private static void SevenZipPaths(string outputFile,CompressionLevel compressionLevel, params string[] paths)
+        {
+            int level = 9;
+            int wordSize = 192;
+            int dictSize = 1024;
+
+            switch (compressionLevel)
+            {
+                case CompressionLevel.Fastest:
+                    level = 2;
+                    dictSize = 4;
+                    wordSize = 32;
+                    break;
+
+                case CompressionLevel.Optimal:
+                    level = 6; 
+                    dictSize = 32;
+                    wordSize = 64;
+                    break;
+            }
+
+            Process.Start(new ProcessStartInfo()
+            {
+                FileName = Path.Combine(sevenZipPath, "7z.exe"),
+                Arguments = $"a -t7z -m0=lzma2 -mx={level} -aoa -mfb={wordSize} -md={dictSize}m -ms=on -bsp1 -bso0 \"{outputFile}\" " + string.Join(' ', paths.Where(p => p != null).Select(p => '\"' + p.Trim('\"') + '\"')),
+            }).WaitForExit();
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {
-            //args = ["C:\\Users\\mrgaton\\Downloads\\Casanova.157,88 Kbit_s.mp3"];
-
             if (!Debugger.IsAttached)
             {
                 AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) =>
@@ -81,19 +178,43 @@ namespace WebHooksFileInMessagesEncoder
                 };
             }
 
+            if (!File.Exists(Path.Combine(sevenZipPath, "7z.dll")))
+            {
+                Console.WriteLine("Installing 7zip please wait");
+                Process.Start(new ProcessStartInfo()
+                {
+                    FileName = "winget",
+                    Arguments = "install 7zip.7zip",
+                    CreateNoWindow = false,
+                    RedirectStandardError = false,
+                    RedirectStandardInput = false,
+                    RedirectStandardOutput = false,
+                    UseShellExecute = false,
+                }).WaitForExit();
+            }
+
+            /*Console.WriteLine("Compressing please wait");
+
+            SevenZipPaths(ZipCompressor.GetRootPath(args).Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z", args);*/
+
+            /*Console.ReadLine();
+            Environment.Exit(0);
+
+            //args = ["C:\\Users\\mrgaton\\Downloads\\Casanova.157,88 Kbit_s.mp3"];
+
             /*var rer =  File.ReadAllBytes("tempStream.tmp").Decompress();
 
              Environment.Exit(0);*/
 
             if (!DirSetted) throw new Exception("What?");
 
-            args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? JSPasteClient.Get(arg.Split('/').Last()).Result.Split('/')[0] : arg).ToArray();
+            args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? GetFromJspaste(arg) : arg).ToArray();
 
             //Console.WriteLine(string.Join(" ", args));
 
             WebHookHelper webHookHelper = null;
 
-            Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
+            /*Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
             Console.WriteLine(BitConverter.ToString(new byte[] {0x22,0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress().Decompress()));
             Console.WriteLine();
 
@@ -119,15 +240,13 @@ namespace WebHooksFileInMessagesEncoder
 
             Console.WriteLine();
             Console.WriteLine();
-            Console.ReadLine();
+            Console.ReadLine();*/
 
             try
             {
                 webHookHelper = new WebHookHelper(File.ReadAllText(WebHookFileName));
             }
             catch { }
-
-            string fileNameLengh = new string('a', 53);
 
             if (args.Length > 1)
             {
@@ -140,7 +259,7 @@ namespace WebHooksFileInMessagesEncoder
 
                     ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url());
 
-                    Console.WriteLine("Removing file chunkks (" + ids.Length + ")");
+                    Console.WriteLine("Removing file chunks (" + ids.Length + ")");
                     webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
                     return;
                 }
@@ -167,18 +286,22 @@ namespace WebHooksFileInMessagesEncoder
 
             if (File.Exists(UnsendedIds))
             {
-                string unsendedIds = File.ReadAllText(UnsendedIds);
-
-                if (!string.IsNullOrWhiteSpace(unsendedIds))
+                try
                 {
-                    Console.WriteLine("Removing unfinished file upload chunks");
+                    string unsendedIds = File.ReadAllText(UnsendedIds);
 
-                    webHookHelper.RemoveMessages(unsendedIds.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray()).GetAwaiter().GetResult();
+                    if (!string.IsNullOrWhiteSpace(unsendedIds))
+                    {
+                        Console.WriteLine("Removing unfinished file upload chunks");
 
-                    File.WriteAllBytes(UnsendedIds, []);
+                        webHookHelper.RemoveMessages(unsendedIds.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray()).GetAwaiter().GetResult();
 
-                    Console.WriteLine();
+                        File.WriteAllBytes(UnsendedIds, []);
+
+                        Console.WriteLine();
+                    }
                 }
+                catch {   }
             }
 
             /*byte[] val = Compress(new List<ulong>() { 1163590914585940018, 1163590939156152330, 1163590953945268364, 1163590977127194658, 1163591000413970554, 1163591016801124363, 1163591040540868698, 1163591061541756978, 1163591068487536691, 1163591114377404477, 1163591134988214294, 1163591157318688833, 1163591178676097146, 1163591201757347911, 1163591235089477672, 1163591301082652743, 1163591332040818698 });
@@ -232,7 +355,7 @@ namespace WebHooksFileInMessagesEncoder
 
                 string filePath = args[0];
 
-                if (Directory.Exists(filePath)) args = Directory.GetFiles(filePath).Concat(Directory.GetDirectories(filePath)).ToArray();
+                if (args.Length == 1 && Directory.Exists(filePath)) args = Directory.GetFiles(filePath).Concat(Directory.GetDirectories(filePath)).Concat([null]).ToArray();
 
                 CompressionLevel compLevel = CompressionLevel.NoCompression;
                 Stream stream;
@@ -244,12 +367,19 @@ namespace WebHooksFileInMessagesEncoder
                 }
                 else
                 {
-                    stream = new MemoryStream();
-
                     string rootPath = ZipCompressor.GetRootPath(args);
-                    filePath = rootPath + ".zip";
-                    ZipCompressor.CompressZip(ref stream, rootPath, args);
-                    stream.Position = 0;
+
+                    if (File.Exists(StreamCompression.tempCompressorPath)) File.Delete(StreamCompression.tempCompressorPath);
+                    Console.WriteLine("Compressing files please wait\n");
+
+                    var compressionLevel = DiscordFilesSpliter.ShouldCompress(null, 0, false);
+
+                    SevenZipPaths(StreamCompression.tempCompressorPath, compressionLevel, args);
+
+                    filePath = rootPath.Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z";
+                    //ZipCompressor.CompressZip(ref stream, rootPath, args);
+
+                    stream = File.OpenRead(StreamCompression.tempCompressorPath);
 
                     Console.WriteLine();
                 }
@@ -262,22 +392,13 @@ namespace WebHooksFileInMessagesEncoder
 
                 string fileSeed = WriteUploaded(fileName, result.seed, result.secret, webHookHelper);
 
-                UploadedFilesWriter.WriteLine();
-                UploadedFilesWriter.WriteLine(fileName + " = " + fileSeed);
-                UploadedFilesWriter.Flush();
-
-                var jspLink = SendJspaste(fileSeed);
-
-                UploadedFilesWriter.WriteLine(fileName + " = " + jspLink);
-                UploadedFilesWriter.Flush();
-
                 try
                 {
-                    Clipboard.SetText(jspLink);
+                    Clipboard.SetText(fileSeed);
                 }
                 catch { }
 
-                Console.Write("File seed: " + jspLink);
+                Console.Write("File seed: " + fileSeed);
 
                 Console.ForegroundColor = Console.BackgroundColor;
                 Console.ReadLine();
@@ -290,7 +411,7 @@ namespace WebHooksFileInMessagesEncoder
 
             string fileData = Console.ReadLine().Trim();
 
-            if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = JSPasteClient.Get(fileData.Split('/').Last()).Result;
+            if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = GetFromJspaste(fileData); //JSPasteClient.Get(fileData.Split('/').Last()).Result;
 
             //Console.WriteLine(fileData);
 
@@ -299,17 +420,33 @@ namespace WebHooksFileInMessagesEncoder
             string seed = fileDataSplited[1];
             string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().Decompress());
 
+            /*if (destFileName.EndsWith(".zip",StringComparison.InvariantCultureIgnoreCase))
+            {
+                SaveFileDialog sfd = new SaveFileDialog()
+                {
+                    FileName = "YourFolderName", // Predefined folder name
+                    Filter = "Directories|*.this.directory", // Choose any extension you want
+                    InitialDirectory = @"C:\Your\Initial\Directory" // Initial directory
+                };
+
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    // Now here's our save folder
+                    string savePath = Path.GetDirectoryName(sfd.FileName);
+                    // Do whatever
+
+                    Console.WriteLine(savePath);
+                    Console.ReadLine();
+                }
+            }*/
+
             SaveFileDialog sfd = new SaveFileDialog()
             {
                 FileName = destFileName,
                 ShowHiddenFiles = true,
             };
 
-            Application.EnableVisualStyles();
-
-            DialogResult dr = sfd.ShowDialog();
-
-            if (dr == DialogResult.OK)
+            if (sfd.ShowDialog() == DialogResult.OK)
             {
                 string filename = sfd.FileName;
 

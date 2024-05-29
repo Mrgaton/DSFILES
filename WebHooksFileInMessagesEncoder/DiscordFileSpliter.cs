@@ -8,9 +8,9 @@ namespace DSFiles
 {
     public static class DiscordFilesSpliter
     {
-        public static StreamWriter UnsendedIdsWriter { get => File.AppendText(Program.UnsendedIds); }
+        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(Program.UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)); }
 
-        private static byte[] XorKey = Convert.FromBase64String("cQhZp1pcNUTi9+xi0JyoAyZ8Nc6KxtMTToWnSGPy2i4ICVbE9Byh6pkm88BoCVPi5lirZ2DG+x1u10XgE2tOjKBTIth+wIgKHdoFo9upjiPU5LlGnvcyk6M6CnehPmJoZIvRT63ac4kXXqZ3Y6SNLmdEZzMlIya7bDK3FSSKgbPE9dUIU2rr2ZZeawAXfd02FSbrB6Q0jYma8tLoTDiAIKKkEbPqNnEUeszO3darMQHO3hhTQ649uvMT8zYoBel8mwEcAhg+Y6IOD3kAw9bWlFwfJjyB+3zseoTDq9SMT23i3owa6pKGwyI4jAeUpk6jWALXOtyZ/Hu9veIUQNOG");
+        private static byte[] XorKey = Convert.FromBase64String("cQhZp1pcNUTi9+xi0JyoAyZ8Nc6KxtMTToWnSGPy2i7ICVbE9Byh6pkm88BoCVPi5lirZ2DG+x1u10XgE2tOjKBTIth+wIgKHdoFo9upjiPU5LlGnvcyk6M6CnehPmJoZIvRT63ac4kXXqZ3Y6SNLmdEZzMlIya7bDK3FSSKgbPE9dUIU2rr2ZZeawAXfd02FSbrB6Q0jYma8tLoTDiAIKKkEbPqNnEUeszO3darMQHO3hhTQ649uvMT8zYoBel8mwEcAhg+Y6IOD3kAw9bWlFwfJjyB+3zseoTDq9SMT23i3owa6pKGwyI4jAeUpk6jWALXOtyZ/Hu9veIUQNOG");
 
         /*public static IEnumerable<byte[]> SplitByLength(byte[] bytes, int maxLength)
         {
@@ -49,31 +49,38 @@ namespace DSFiles
 
         private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avi", ".png", ".jpg", ".iso"];
 
-        public static CompressionLevel ShouldCompress(string ext, long filesize)
+        public static CompressionLevel ShouldCompress(string ext, long filesize, bool askToNotCompress = true)
         {
             bool longTime = false;
             bool notUsefoul = blackListedExt.Any(e => e == ext);
 
             if (filesize > 512 * 1000 * 1000) longTime = true;
 
-            if (longTime && !notUsefoul)
+            if (askToNotCompress)
             {
-                Console.Write("Do you want to compress this file? (it might take a long time) [Y,N]:");
-            }
-            else if (notUsefoul && !longTime)
-            {
-                Console.Write("Do you want to compress this file? (it will probably not be useful) [Y,N]:");
-            }
-            else
-            {
-                Console.Write("Do you want to compress this file? (it wont be useful and will take a lot of time) [Y,N]:");
-            }
+                if (!longTime && !notUsefoul)
+                {
+                    Console.Write("Do you want to compress this file? [Y,N]:");
+                }
+                else if (longTime && !notUsefoul)
+                {
+                    Console.Write("Do you want to compress this file? (it might take a long time) [Y,N]:");
+                }
+                else if (notUsefoul && !longTime)
+                {
+                    Console.Write("Do you want to compress this file? (it will probably not be useful) [Y,N]:");
+                }
+                else
+                {
+                    Console.Write("Do you want to compress this file? (it wont be useful and will take a lot of time) [Y,N]:");
+                }
 
-            char response = GetConsoleKeyChar(['y', 's', 'n']);
-            bool compress = response is 'y' or 's';
-            Console.WriteLine('\n');
+                char response = GetConsoleKeyChar(['y', 's', 'n']);
+                bool compress = response is 'y' or 's';
+                Console.WriteLine('\n');
 
-            if (!compress) return CompressionLevel.NoCompression;
+                if (!compress) return CompressionLevel.NoCompression;
+            }
 
             Console.Write("Select one of following options (fastest, optimal, smallest size) [F,O,S]:");
             char compressionLevel = GetConsoleKeyChar(['f', 'o', 's']);
@@ -228,7 +235,7 @@ namespace DSFiles
 
                     long totalWrited = 0;
 
-                    Console.WriteLine("Starting upload of " + messagesToSend + " chunks");
+                    Console.WriteLine("Starting upload of " + messagesToSend + " chunks (" + ByteSizeToString(dataStream.Length) + ')');
                     Console.WriteLine();
 
                     for (int i = 1; i - 1 < messagesToSend; i++)
@@ -254,6 +261,8 @@ namespace DSFiles
                             ulong attachementId = lastAttachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                             ulong messageId = ulong.Parse((string)response["id"]);
 
+                            if (attachementId <= 0 || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
+
                             tempIdsWriter.WriteLine(messageId.ToString());
                             tempIdsWriter.Flush();
 
@@ -266,6 +275,8 @@ namespace DSFiles
                             Console.ForegroundColor = ConsoleColor.Red;
                             Console.WriteLine('\n' + ex.ToString() + '\n');
                             Console.ForegroundColor = lastColor;
+
+                            Thread.Sleep(2000);
 
                             goto encodeRetry;
                         }
@@ -287,11 +298,11 @@ namespace DSFiles
                     }
 
                     sw.Stop();
+
+                    tempIdsWriter.BaseStream.SetLength(0);
                 }
 
                 Console.WriteLine();
-
-                File.WriteAllBytes(Program.UnsendedIds, []);
 
                 WriteBuffer(CompressArray(attachementsIdsList), seedData);
 
@@ -341,15 +352,17 @@ namespace DSFiles
 
                 Stream? originalStream = compressed ? stream : null;
 
-                if (compressed) stream = StreamCompression.GetCompressorStream((ulong)stream.Length * 2);
-
                 ulong channelId = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
 
                 ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - sizeof(ulong) - sizeof(bool)));
 
                 int attachements = attachementsId.Length;
 
-                Console.WriteLine("Downloading file aprox size " + ByteSizeToString(attachements * amountPerFile));
+                long aproxSize = attachements * amountPerFile;
+
+                if (compressed) stream = StreamCompression.GetCompressorStream((ulong)(aproxSize) * 2);
+
+                Console.WriteLine("Downloading file max size " + ByteSizeToString(aproxSize));
                 //IDsArrayCompressor.Decompress(seed.Skip(sizeof(ulong)).Take(seed.Length - sizeof(ulong)).ToArray()).ToArray();
 
                 string[] attachementsUrls = new string[attachementsId.Length];
@@ -358,7 +371,7 @@ namespace DSFiles
                 {
                     ulong id = attachementsId[i];
 
-                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i > 0 ? attachementsId[i - 1] : int.MaxValue, i + 1, attachements)}";
+                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i > 0 ? attachementsId[i - 1] : int.MaxValue, i + 1, attachements).TrimStart('_')}";
                 }
 
                 int part = 0;
