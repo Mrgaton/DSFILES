@@ -1,6 +1,7 @@
 ﻿using DSFiles;
 using JSPasteNet;
 using System.Diagnostics;
+using System.Net;
 using System.Reflection;
 using System.Text;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
@@ -161,13 +162,15 @@ namespace WebHooksFileInMessagesEncoder
             Process.Start(new ProcessStartInfo()
             {
                 FileName = Path.Combine(sevenZipPath, "7z.exe"),
-                Arguments = $"a -t7z -m0=lzma2 -mx={level} -aoa -mfb={wordSize} -md={dictSize}m -ms=on -bsp1 -bso0 \"{outputFile}\" " + string.Join(' ', paths.Where(p => p != null).Select(p => '\"' + p.Trim('\"') + '\"')),
+                Arguments = $"a -t7z -m0=lzma2 -mx={level} -aoa -mfb={wordSize} -md={dictSize}m -ms=on -bsp1 -bso0 \"{outputFile}\" " + string.Join(' ', paths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => '\"' + p.Trim('\"') + '\"')),
             }).WaitForExit();
         }
 
         [STAThread]
         private static void Main(string[] args)
         {
+            if (!DirSetted) throw new Exception("What?");
+
             if (!Debugger.IsAttached)
             {
                 AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) =>
@@ -193,6 +196,24 @@ namespace WebHooksFileInMessagesEncoder
                 }).WaitForExit();
             }
 
+            if (args[0] == "updateKey")
+            {
+                using (FileStream fs = File.Open(".\\key", FileMode.OpenOrCreate, FileAccess.ReadWrite))
+                {
+                    WebClient wc = new WebClient();
+
+                    for (int i = 0; i < 8; i++)
+                    {
+                        byte[] data = wc.DownloadData("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f");
+                        Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
+
+                        fs.Write(data, 0, data.Length);
+                    }
+                }
+
+                return;
+            }
+
             /*Console.WriteLine("Compressing please wait");
 
             SevenZipPaths(ZipCompressor.GetRootPath(args).Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z", args);*/
@@ -206,7 +227,6 @@ namespace WebHooksFileInMessagesEncoder
 
              Environment.Exit(0);*/
 
-            if (!DirSetted) throw new Exception("What?");
 
             args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? GetFromJspaste(arg) : arg).ToArray();
 
@@ -355,7 +375,7 @@ namespace WebHooksFileInMessagesEncoder
 
                 string filePath = args[0];
 
-                if (args.Length == 1 && Directory.Exists(filePath)) args = Directory.GetFiles(filePath).Concat(Directory.GetDirectories(filePath)).Concat([null]).ToArray();
+                if (args.Length == 1 && Directory.Exists(filePath)) args = args.Concat([""]).ToArray();
 
                 CompressionLevel compLevel = CompressionLevel.NoCompression;
                 Stream stream;

@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using DSFiles.Properties;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -10,7 +11,7 @@ namespace DSFiles
     {
         public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(Program.UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)); }
 
-        private static byte[] XorKey = Convert.FromBase64String("cQhZp1pcNUTi9+xi0JyoAyZ8Nc6KxtMTToWnSGPy2i7ICVbE9Byh6pkm88BoCVPi5lirZ2DG+x1u10XgE2tOjKBTIth+wIgKHdoFo9upjiPU5LlGnvcyk6M6CnehPmJoZIvRT63ac4kXXqZ3Y6SNLmdEZzMlIya7bDK3FSSKgbPE9dUIU2rr2ZZeawAXfd02FSbrB6Q0jYma8tLoTDiAIKKkEbPqNnEUeszO3darMQHO3hhTQ649uvMT8zYoBel8mwEcAhg+Y6IOD3kAw9bWlFwfJjyB+3zseoTDq9SMT23i3owa6pKGwyI4jAeUpk6jWALXOtyZ/Hu9veIUQNOG");
+        private static byte[] XorKey = Resources.bin;
 
         /*public static IEnumerable<byte[]> SplitByLength(byte[] bytes, int maxLength)
         {
@@ -256,7 +257,7 @@ namespace DSFiles
                         {
                             string attachementName = EncodeAttachementName(webHook.channelId, lastAttachementId, i, messagesToSend);
 
-                            JsonNode response = JsonNode.Parse(await webHook.PostFileToWebhook(DXOR(buffer, XorKey), attachementName));
+                            JsonNode response = JsonNode.Parse(await webHook.PostFileToWebhook(D(buffer, XorKey), attachementName));
 
                             ulong attachementId = lastAttachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                             ulong messageId = ulong.Parse((string)response["id"]);
@@ -422,7 +423,7 @@ namespace DSFiles
 
                             Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
-                            var decoded = UXOR(dataPart, XorKey);
+                            var decoded = U(dataPart, XorKey);
 
                             await stream.WriteAsync(decoded, 0, dataPart.Length);
                         }
@@ -707,19 +708,63 @@ namespace DSFiles
             else return size + "B";
         }
 
-        private static byte[] DXOR(byte[] data, byte[] key)
+        public static byte[] D(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
-            int lastIndex = data.Length - 1;
-            for (int i = 0; i < data.Length; i++) result[i] = (byte)(data[lastIndex - i] ^ (byte)(key[i % key.Length] + i));
+
+            int max = data.Length - 1;
+            byte last = (byte)(data.Length % byte.MaxValue);
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                int keyIndex = i % key.Length;
+
+                result[i] = (byte)(data[max - i] ^ key[keyIndex]);
+                result[i] += last;
+
+                last += data[max - i];
+
+                if (i % 2 == 0)
+                {
+                    last &= key[(key.Length - keyIndex) - 1];
+                }
+                else
+                {
+                    last ^= key[(key.Length - keyIndex) - 1];
+                }
+            }
+
             return result;
         }
 
-        private static byte[] UXOR(byte[] data, byte[] key)
+        public static byte[] U(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
-            int lastIndex = data.Length - 1;
-            for (int i = data.Length - 1; i >= 0; i--) result[lastIndex - i] = (byte)(data[i] ^ (byte)(key[i % key.Length] + i));
+
+            int max = data.Length - 1;
+            byte last = (byte)(data.Length % byte.MaxValue);
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                int keyIndex = i % key.Length;
+
+                data[i] -= last;
+
+                byte b = (byte)(data[i] ^ key[keyIndex]);
+
+                result[max - i] = b;
+                last += b;
+
+                if (i % 2 == 0)
+                {
+                    last &= key[(key.Length - keyIndex) - 1];
+                }
+                else
+                {
+                    last ^= key[(key.Length - keyIndex) - 1];
+                }
+            }
+
             return result;
         }
     }
