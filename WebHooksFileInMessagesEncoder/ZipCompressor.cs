@@ -6,7 +6,7 @@ namespace DSFiles
     {
         public static string GetRootPath(params ReadOnlySpan<string> pathArrays)
         {
-            string commonRoot = Path.GetDirectoryName(pathArrays[0]);
+            string commonRoot = Directory.Exists(pathArrays[0]) ? pathArrays[0] : Path.GetDirectoryName(pathArrays[0]);
 
             for (int i = 1; i < pathArrays.Length; i++)
             {
@@ -14,7 +14,14 @@ namespace DSFiles
 
                 while (!pathArrays[i].StartsWith(commonRoot, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    commonRoot = Path.GetDirectoryName(commonRoot);
+                    if (Directory.Exists(commonRoot))
+                    {
+                        commonRoot = (commonRoot);
+                    }
+                    else
+                    {
+                        commonRoot = Path.GetDirectoryName(commonRoot);
+                    }
                 }
             }
 

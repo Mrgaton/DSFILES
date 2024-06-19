@@ -57,7 +57,7 @@ namespace WebHooksFileInMessagesEncoder
 
         public async Task SendMessageInChunks(string content)
         {
-            string[] splitted = content.Split('\n');
+            string[] splitted = content.Split('\n').SelectMany(line => line.SplitInParts(2000)).ToArray();
 
             for (int i = 0; i < splitted.Length; i++)
             {

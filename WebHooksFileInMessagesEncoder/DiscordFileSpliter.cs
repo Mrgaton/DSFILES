@@ -179,7 +179,7 @@ namespace DSFiles
         {
             bool compress = compressionLevel != CompressionLevel.NoCompression;
 
-            Stream tempCompressorStream = StreamCompression.GetCompressorStream((ulong)dataStream.Length);
+            Stream tempCompressorStream = compress ? StreamCompression.GetCompressorStream((ulong)dataStream.Length) : null;
 
             if (compress)
             {
@@ -188,7 +188,7 @@ namespace DSFiles
                 long originalFileSize = dataStream.Length;
 
                 long totalRead = 0L;
-                byte[] buffer = new byte[originalFileSize / (100 * 8)]; // 80 KB buffer
+                byte[] buffer = new byte[Math.Max(originalFileSize / (100 * 8), 1)]; // 80 KB buffer
                 int bytesRead;
 
                 int consoleTop = Console.CursorTop - 1;
@@ -307,7 +307,7 @@ namespace DSFiles
 
                 WriteBuffer(CompressArray(attachementsIdsList), seedData);
 
-                return (seedData.ToArray(), CompressArray(messagesIdsList));
+                return (seedData.ToArray().Compress(), CompressArray(messagesIdsList));
             }
         }
 
@@ -347,7 +347,7 @@ namespace DSFiles
 
         private static async Task DecodeCore(byte[] seed, Stream stream)
         {
-            using (MemoryStream seedData = new MemoryStream(seed))
+            using (MemoryStream seedData = new MemoryStream(seed.Decompress()))
             {
                 bool compressed = seedData.ReadByte() == 255;
 
@@ -472,7 +472,7 @@ namespace DSFiles
 
         //private static Regex alphanumericRegex = new Regex("[^a-zA-Z0-9 -]");
 
-        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimEnd('=') + '_' + (amount - index);
+        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)) + '_' + (amount - index);
 
         public static void WriteBuffer(byte[] buffer, dynamic Str) => Str.Write(buffer, 0, buffer.Length);
 
@@ -618,9 +618,9 @@ namespace DSFiles
             }
         }*/
 
-        public static byte[] CompressArray(ulong[] array) => ArraySerealizer(array).Compress();
+        public static byte[] CompressArray(ulong[] array) => ArraySerealizer(array);
 
-        public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data.Decompress());
+        public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data);
 
         private static ulong GetDeltaMin(ulong[] nums)
         {
@@ -678,7 +678,6 @@ namespace DSFiles
                 for (int i = 0; i < array.Length; i++)
                 {
                     ulong num = memStr.ReadULong(i % 2 == 0);
-
                     array[i] = num + last + deltaMin;
 
                     last = array[i];

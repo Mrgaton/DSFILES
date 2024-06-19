@@ -16,7 +16,7 @@ namespace DSFiles
             }
         }
 
-        private static ulong AvailableMemory { get => new ComputerInfo().AvailablePhysicalMemory; }
+        public static ulong AvailableMemory { get => new ComputerInfo().AvailablePhysicalMemory; }
 
         public static Stream GetCompressorStream(ulong fileLengh)
         {

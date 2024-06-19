@@ -3,6 +3,8 @@ using JSPasteNet;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.Security;
+using System.Security.Permissions;
 using System.Text;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
@@ -26,13 +28,13 @@ namespace WebHooksFileInMessagesEncoder
             }
         }
 
-        private const string WebHookFileName = "WebHook.txt";
+        private const string WebHookFileName = "WebHook.dat";
 
-        public const string UnsendedIds = "Missing.txt";
+        public const string UnsendedIds = "Missing.dat";
 
-        private const string UploadedFiles = "Uploaded.txt";
+        private const string UploadedFiles = "Uploaded.log";
 
-        private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite));
+        private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.Append, FileAccess.Write, FileShare.ReadWrite));
 
         private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper) => Encoding.UTF8.GetBytes(fileName).Compress().ToBase64Url() + ":" + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
 
@@ -42,18 +44,19 @@ namespace WebHooksFileInMessagesEncoder
 
             StringBuilder sb = new StringBuilder();
 
-            sb.AppendLine($"FileName: `{fileName}`");
-            sb.AppendLine($"DownloadToken: `{fileSeed.Split('/')[0]}`");
-            sb.AppendLine($"RemoveToken: `{fileSeed.Split('/').Last()}`");
+            sb.AppendLine($"`FileName:` {fileName}");
+            sb.AppendLine($"`DownloadToken:` {fileSeed.Split('/')[0]}");
+            sb.AppendLine($"`RemoveToken:` {fileSeed.Split('/').Last()}");
 
             string jspasteSeed = SendJspaste(fileSeed);
 
-            sb.AppendLine($"Shortened: `{jspasteSeed}`");
+            sb.AppendLine($"`Shortened:` {jspasteSeed}");
 
-            webHookHelper.SendMessageInChunks(sb.ToString()).GetAwaiter().GetResult();
-
+            //UploadedFilesWriter.BaseStream.Position = UploadedFilesWriter.BaseStream.Length - 1;
             UploadedFilesWriter.WriteLine(sb.ToString());
             UploadedFilesWriter.Flush();
+
+            webHookHelper.SendMessageInChunks(sb.ToString()).GetAwaiter().GetResult();
 
             return jspasteSeed;
         }
@@ -138,11 +141,15 @@ namespace WebHooksFileInMessagesEncoder
 
         private static string sevenZipPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"7-Zip\");
 
-        private static void SevenZipPaths(string outputFile,CompressionLevel compressionLevel, params string[] paths)
+        private static void SevenZipPaths(string outputFile, CompressionLevel compressionLevel, params string[] paths)
         {
+            int processors = Math.Min(Environment.ProcessorCount, 4);
+
             int level = 9;
             int wordSize = 192;
-            int dictSize = 1024;
+
+            var freeMb = (StreamCompression.AvailableMemory / 1000 / 1000) - 512 - (ulong)wordSize;
+            int dictSize = Math.Max(64, (int)freeMb / processors / 5);
 
             switch (compressionLevel)
             {
@@ -153,22 +160,26 @@ namespace WebHooksFileInMessagesEncoder
                     break;
 
                 case CompressionLevel.Optimal:
-                    level = 6; 
+                    level = 6;
                     dictSize = 32;
                     wordSize = 64;
                     break;
             }
 
+            Console.WriteLine("Compressing with dictSize:" + dictSize);
+
             Process.Start(new ProcessStartInfo()
             {
                 FileName = Path.Combine(sevenZipPath, "7z.exe"),
-                Arguments = $"a -t7z -m0=lzma2 -mx={level} -aoa -mfb={wordSize} -md={dictSize}m -ms=on -bsp1 -bso0 \"{outputFile}\" " + string.Join(' ', paths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => '\"' + p.Trim('\"') + '\"')),
+                Arguments = $"a -t7z -m0=lzma2 -mx={level} -mmt={processors} -aoa -mfb={wordSize} -md={dictSize}m -ms=on -bsp1 -bse1 -bt \"{outputFile}\" " + string.Join(' ', paths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => '\"' + p.Trim('\"') + '\"')),
             }).WaitForExit();
         }
 
         [STAThread]
         private static void Main(string[] args)
         {
+            //args = ["WebHook_pablo.txt"];
+
             if (!DirSetted) throw new Exception("What?");
 
             if (!Debugger.IsAttached)
@@ -196,7 +207,7 @@ namespace WebHooksFileInMessagesEncoder
                 }).WaitForExit();
             }
 
-            if (args[0] == "updateKey")
+            if (args.Length > 0 && args[0] == "/updateKey")
             {
                 using (FileStream fs = File.Open(".\\key", FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
@@ -226,7 +237,6 @@ namespace WebHooksFileInMessagesEncoder
             /*var rer =  File.ReadAllBytes("tempStream.tmp").Decompress();
 
              Environment.Exit(0);*/
-
 
             args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? GetFromJspaste(arg) : arg).ToArray();
 
@@ -321,7 +331,7 @@ namespace WebHooksFileInMessagesEncoder
                         Console.WriteLine();
                     }
                 }
-                catch {   }
+                catch { }
             }
 
             /*byte[] val = Compress(new List<ulong>() { 1163590914585940018, 1163590939156152330, 1163590953945268364, 1163590977127194658, 1163591000413970554, 1163591016801124363, 1163591040540868698, 1163591061541756978, 1163591068487536691, 1163591114377404477, 1163591134988214294, 1163591157318688833, 1163591178676097146, 1163591201757347911, 1163591235089477672, 1163591301082652743, 1163591332040818698 });
@@ -378,7 +388,7 @@ namespace WebHooksFileInMessagesEncoder
                 if (args.Length == 1 && Directory.Exists(filePath)) args = args.Concat([""]).ToArray();
 
                 CompressionLevel compLevel = CompressionLevel.NoCompression;
-                Stream stream;
+                Stream stream = null;
 
                 if (args.Length == 1)
                 {
@@ -399,10 +409,30 @@ namespace WebHooksFileInMessagesEncoder
                     filePath = rootPath.Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z";
                     //ZipCompressor.CompressZip(ref stream, rootPath, args);
 
-                    stream = File.OpenRead(StreamCompression.tempCompressorPath);
+                    int tries = 0;
+
+                    while (tries < 5)
+                    {
+                        try
+                        {
+                            stream = File.OpenRead(StreamCompression.tempCompressorPath);
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            tries++;
+
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine(ex);
+
+                            Thread.Sleep(2000);
+                        }
+                    }
 
                     Console.WriteLine();
                 }
+
+                if (stream == null) throw new ArgumentNullException(nameof(stream));
 
                 var result = DiscordFilesSpliter.EncodeCore(webHookHelper, stream, compLevel).Result;
 
@@ -491,5 +521,13 @@ namespace WebHooksFileInMessagesEncoder
         }
 
         private static HttpClient client = new HttpClient();
+
+        public static bool CheckFolderPermissions(string folderPath, FileIOPermissionAccess permission = FileIOPermissionAccess.Write)
+        {
+            var permissionSet = new PermissionSet(PermissionState.None);
+            var neededPermission = new FileIOPermission(permission, folderPath);
+            permissionSet.AddPermission(neededPermission);
+            return permissionSet.IsSubsetOf(AppDomain.CurrentDomain.PermissionSet);
+        }
     }
 }
