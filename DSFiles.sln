@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles", "WebHooksFileInMessagesEncoder\DSFiles.csproj", "{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles_Client", "DSFiles-Client\DSFiles_Client.csproj", "{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSFiles_Server", "DSFiles-Server\DSFiles_Server.csproj", "{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

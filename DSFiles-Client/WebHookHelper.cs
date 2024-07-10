@@ -13,12 +13,12 @@ namespace WebHooksFileInMessagesEncoder
         private static string WebHookUrl = string.Empty;
 
         public ulong applicationId { get; set; }
-        public string avatar { get; set; }
-        public string token { get; set; }
+        public string? avatar { get; set; }
+        public string? token { get; set; }
         public ulong channelId { get; set; }
         public ulong guildId { get; set; }
         public ulong id { get; set; }
-        public string name { get; set; }
+        public string? name { get; set; }
         public int type { get; set; }
 
         public WebHookHelper(ulong webHookId, string token)
@@ -52,6 +52,7 @@ namespace WebHooksFileInMessagesEncoder
             id = ulong.Parse(json["id"].ToString());
             name = json["name"].ToString();
             type = int.Parse(json["type"].ToString());
+
             token = (string)json["token"];
         }
 

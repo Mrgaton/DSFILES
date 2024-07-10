@@ -1,4 +1,4 @@
-﻿using DSFiles.Properties;
+﻿using DSFiles_Client.Properties;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
@@ -53,21 +53,21 @@ namespace DSFiles
         public static CompressionLevel ShouldCompress(string ext, long filesize, bool askToNotCompress = true)
         {
             bool longTime = false;
-            bool notUsefoul = blackListedExt.Any(e => e == ext);
+            bool notUseful = blackListedExt.Any(e => e == ext);
 
             if (filesize > 512 * 1000 * 1000) longTime = true;
 
             if (askToNotCompress)
             {
-                if (!longTime && !notUsefoul)
+                if (!longTime && !notUseful)
                 {
                     Console.Write("Do you want to compress this file? [Y,N]:");
                 }
-                else if (longTime && !notUsefoul)
+                else if (longTime && !notUseful)
                 {
                     Console.Write("Do you want to compress this file? (it might take a long time) [Y,N]:");
                 }
-                else if (notUsefoul && !longTime)
+                else if (notUseful && !longTime)
                 {
                     Console.Write("Do you want to compress this file? (it will probably not be useful) [Y,N]:");
                 }
@@ -223,7 +223,8 @@ namespace DSFiles
             using (MemoryStream seedData = new MemoryStream())
             {
                 seedData.WriteByte(compress ? (byte)255 : (byte)0);
-                seedData.Write(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
+                await seedData.WriteAsync(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
+                await seedData.WriteAsync(BitConverter.GetBytes((ulong)dataStream.Length), 0, sizeof(ulong));
 
                 int messagesToSend = (int)((ulong)dataStream.Length / amountPerFile) + 1, messagesSended = 0;
 
@@ -253,31 +254,29 @@ namespace DSFiles
 
                     encodeRetry:
 
+                        JsonNode? response = null;
+
                         try
                         {
                             string attachementName = EncodeAttachementName(webHook.channelId, lastAttachementId, i, messagesToSend);
 
-                            JsonNode response = JsonNode.Parse(await webHook.PostFileToWebhook(D(buffer, XorKey), attachementName));
+                            response = JsonNode.Parse(await webHook.PostFileToWebhook(D(buffer, XorKey), attachementName));
 
                             ulong attachementId = lastAttachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                             ulong messageId = ulong.Parse((string)response["id"]);
 
                             if (attachementId <= 0 || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
 
-                            tempIdsWriter.WriteLine(messageId.ToString());
-                            tempIdsWriter.Flush();
+                            await tempIdsWriter.WriteLineAsync(messageId.ToString());
+                            await tempIdsWriter.FlushAsync();
 
                             attachementsIdsList[i - 1] = attachementId;
                             messagesIdsList[i - 1] = messageId;
                         }
                         catch (Exception ex)
                         {
-                            var lastColor = Console.ForegroundColor;
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine('\n' + ex.ToString() + '\n');
-                            Console.ForegroundColor = lastColor;
-
-                            Thread.Sleep(2000);
+                            Program.WriteException(ref ex, response.ToString());
+                            Thread.Sleep(new Random().Next(0, 1000));
 
                             goto encodeRetry;
                         }
@@ -307,7 +306,7 @@ namespace DSFiles
 
                 WriteBuffer(CompressArray(attachementsIdsList), seedData);
 
-                return (seedData.ToArray().Compress(), CompressArray(messagesIdsList));
+                return (seedData.ToArray().Deflate(), CompressArray(messagesIdsList).Deflate());
             }
         }
 
@@ -347,15 +346,16 @@ namespace DSFiles
 
         private static async Task DecodeCore(byte[] seed, Stream stream)
         {
-            using (MemoryStream seedData = new MemoryStream(seed.Decompress()))
+            using (MemoryStream seedData = new MemoryStream(seed.Inflate()))
             {
                 bool compressed = seedData.ReadByte() == 255;
 
                 Stream? originalStream = compressed ? stream : null;
 
                 ulong channelId = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
+                ulong contentLength = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
 
-                ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - sizeof(ulong) - sizeof(bool)));
+                ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - (sizeof(ulong) * 2) - sizeof(bool)));
 
                 int attachements = attachementsId.Length;
 
@@ -372,7 +372,7 @@ namespace DSFiles
                 {
                     ulong id = attachementsId[i];
 
-                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i > 0 ? attachementsId[i - 1] : int.MaxValue, i + 1, attachements).TrimStart('_')}";
+                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i > 0 ? attachementsId[i - 1] : int.MaxValue, i + 1, attachements)}";
                 }
 
                 int part = 0;
@@ -387,15 +387,17 @@ namespace DSFiles
                     {
                         string[] refreshedUrls = await RefreshUrls(attachementsUrls.Skip(part).Take(attachementsUrls.Length - part > 0 ? RefreshUrlsChunkSize : part - attachementsUrls.Length).ToArray());
 
+                        byte[] dataPart;
+
                         for (int e = part; e < part + RefreshUrlsChunkSize && e < attachementsUrls.Length; e++)
                         {
                             sw.Restart();
 
                             string url = refreshedUrls[e - part];
 
-                        decodeRetry:
+                        rety:
 
-                            byte[] dataPart = null;
+                            dataPart = null;
 
                             try
                             {
@@ -405,13 +407,9 @@ namespace DSFiles
                             }
                             catch (Exception ex)
                             {
-                                var lastColor = Console.ForegroundColor;
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine('\n' + ex.ToString() + '\n');
-                                Console.ForegroundColor = lastColor;
-                                Thread.Sleep(2000);
+                                Program.WriteException(ref ex);
 
-                                goto decodeRetry;
+                                goto rety;
                             }
 
                             timeList.Add(sw.ElapsedMilliseconds);
@@ -471,8 +469,7 @@ namespace DSFiles
          }*/
 
         //private static Regex alphanumericRegex = new Regex("[^a-zA-Z0-9 -]");
-
-        private static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)) + '_' + (amount - index);
+        public static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
 
         public static void WriteBuffer(byte[] buffer, dynamic Str) => Str.Write(buffer, 0, buffer.Length);
 
@@ -739,7 +736,6 @@ namespace DSFiles
         public static byte[] U(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
-
             int max = data.Length - 1;
             byte last = (byte)(data.Length % byte.MaxValue);
 

@@ -36,7 +36,13 @@ namespace WebHooksFileInMessagesEncoder
 
         private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.Append, FileAccess.Write, FileShare.ReadWrite));
 
-        private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper) => Encoding.UTF8.GetBytes(fileName).Compress().ToBase64Url() + ":" + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
+        private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper)
+        {
+            string extension = Path.GetExtension(fileName).TrimStart('.');
+            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+
+            return Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
+        }
 
         private static string WriteUploaded(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper)
         {
@@ -47,6 +53,8 @@ namespace WebHooksFileInMessagesEncoder
             sb.AppendLine($"`FileName:` {fileName}");
             sb.AppendLine($"`DownloadToken:` {fileSeed.Split('/')[0]}");
             sb.AppendLine($"`RemoveToken:` {fileSeed.Split('/').Last()}");
+            sb.AppendLine($"`WebLink:` https://gato.ovh/df/{string.Join(':', fileSeed.Split(':').Skip(1)).Split('/')[0]}");
+            sb.AppendLine($"`DownloadLink:` https://gato.ovh/df/{fileSeed.Split('/')[0]}");
 
             string jspasteSeed = SendJspaste(fileSeed);
 
@@ -71,13 +79,13 @@ namespace WebHooksFileInMessagesEncoder
                 {
                     LifeTime = TimeSpan.MaxValue,
                     KeyLength = 4,
-                    Password = "hola"
+                    Password = "hola",
+                    Secret = "porrosricos"
                 }).Result.Key;
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
-                Console.WriteLine();
+                WriteException(ref ex);
             }
 
             return data;
@@ -180,7 +188,7 @@ namespace WebHooksFileInMessagesEncoder
         {
             //args = ["WebHook_pablo.txt"];
 
-            if (!DirSetted) throw new Exception("What?");
+            if (!DirSetted) throw new IOException("What?");
 
             if (!Debugger.IsAttached)
             {
@@ -211,14 +219,15 @@ namespace WebHooksFileInMessagesEncoder
             {
                 using (FileStream fs = File.Open(".\\key", FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
-                    WebClient wc = new WebClient();
-
-                    for (int i = 0; i < 8; i++)
+                    using (WebClient wc = new WebClient())
                     {
-                        byte[] data = wc.DownloadData("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f");
-                        Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
+                        for (int i = 0; i < 8; i++)
+                        {
+                            byte[] data = wc.DownloadData("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f");
+                            Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
 
-                        fs.Write(data, 0, data.Length);
+                            fs.Write(data, 0, data.Length);
+                        }
                     }
                 }
 
@@ -242,7 +251,7 @@ namespace WebHooksFileInMessagesEncoder
 
             //Console.WriteLine(string.Join(" ", args));
 
-            WebHookHelper webHookHelper = null;
+            WebHookHelper? webHookHelper = null;
 
             /*Console.WriteLine(BitConverter.ToString(new byte[] { 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress()));
             Console.WriteLine(BitConverter.ToString(new byte[] {0x22,0x22, 0x22, 0x22, 0x23, 0x24, 0x25 }.Compress().Decompress()));
@@ -278,6 +287,8 @@ namespace WebHooksFileInMessagesEncoder
             }
             catch { }
 
+            Console.ForegroundColor = ConsoleColor.White;
+
             if (args.Length > 1)
             {
                 if (args[0].Equals("delete", StringComparison.InvariantCultureIgnoreCase))
@@ -287,7 +298,7 @@ namespace WebHooksFileInMessagesEncoder
 
                     webHookHelper = new WebHookHelper(BitConverter.ToUInt64(splited[1].FromBase64Url()), splited[2]);
 
-                    ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url());
+                    ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url().Inflate());
 
                     Console.WriteLine("Removing file chunks (" + ids.Length + ")");
                     webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
@@ -303,11 +314,7 @@ namespace WebHooksFileInMessagesEncoder
                 {
                     var result = DiscordFilesSpliter.Encode(webHookHelper, args[1]).GetAwaiter().GetResult();
 
-                    WriteUploaded(args[1], result.seed, result.secret, webHookHelper);
-
-                    string jspLink = SendJspaste(FileSeedToString(args[1], result.seed, result.secret, webHookHelper));
-                    UploadedFilesWriter.WriteLine(args[1] + "; " + jspLink);
-                    UploadedFilesWriter.Flush();
+                    string jspLink = WriteUploaded(args[1], result.seed, result.secret, webHookHelper);
 
                     Console.Write("FileSeed: " + jspLink);
                     return;
@@ -331,7 +338,10 @@ namespace WebHooksFileInMessagesEncoder
                         Console.WriteLine();
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Program.WriteException(ref ex);
+                }
             }
 
             /*byte[] val = Compress(new List<ulong>() { 1163590914585940018, 1163590939156152330, 1163590953945268364, 1163590977127194658, 1163591000413970554, 1163591016801124363, 1163591040540868698, 1163591061541756978, 1163591068487536691, 1163591114377404477, 1163591134988214294, 1163591157318688833, 1163591178676097146, 1163591201757347911, 1163591235089477672, 1163591301082652743, 1163591332040818698 });
@@ -393,6 +403,7 @@ namespace WebHooksFileInMessagesEncoder
                 if (args.Length == 1)
                 {
                     stream = File.OpenRead(filePath);
+
                     compLevel = DiscordFilesSpliter.ShouldCompress(Path.GetExtension(filePath), stream.Length);
                 }
                 else
@@ -422,10 +433,7 @@ namespace WebHooksFileInMessagesEncoder
                         {
                             tries++;
 
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine(ex);
-
-                            Thread.Sleep(2000);
+                            Program.WriteException(ref ex);
                         }
                     }
 
@@ -467,8 +475,8 @@ namespace WebHooksFileInMessagesEncoder
 
             string[] fileDataSplited = fileData.Split('/')[0].Split(':');
 
-            string seed = fileDataSplited[1];
-            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().Decompress());
+            string seed = fileDataSplited.Last();
+            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 ? '.' + fileDataSplited.Skip(1).First() : null);
 
             /*if (destFileName.EndsWith(".zip",StringComparison.InvariantCultureIgnoreCase))
             {
@@ -528,6 +536,15 @@ namespace WebHooksFileInMessagesEncoder
             var neededPermission = new FileIOPermission(permission, folderPath);
             permissionSet.AddPermission(neededPermission);
             return permissionSet.IsSubsetOf(AppDomain.CurrentDomain.PermissionSet);
+        }
+
+        public static void WriteException(ref Exception ex, params string[] messages)
+        {
+            var lastColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(string.Join('\n', messages) + '\n' + ex.ToString() + '\n');
+            Console.ForegroundColor = lastColor;
+            Thread.Sleep(2000);
         }
     }
 }

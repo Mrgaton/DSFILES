@@ -3,6 +3,12 @@ using System.Text;
 
 namespace WebHooksFileInMessagesEncoder
 {
+    public static class Base64Url
+    {
+        public static string ToBase64Url(byte[] data) => Convert.ToBase64String(data).Trim('=').Replace('+', '-').Replace('/', '_');
+
+        public static byte[] FromBase64Url(string data) => Convert.FromBase64String(data.Replace('_', '/').Replace('-', '+').PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
+    }
     public static class TimespanUtils
     {
         public static string ToReadableAgeString(this TimeSpan span)
@@ -52,7 +58,38 @@ namespace WebHooksFileInMessagesEncoder
 
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
 
-        public static byte[] Compress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
+        public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
+        {
+            using (MemoryStream output = new MemoryStream())
+            {
+                using (BrotliStream dstream = new BrotliStream(output, level, true))
+                {
+                    dstream.Write(data, 0, data.Length);
+                    dstream.Flush();
+                }
+
+                return output.ToArray();
+            }
+        }
+
+        public static byte[] BrotliDecompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
+        {
+            using (MemoryStream input = new MemoryStream(data))
+            {
+                using (MemoryStream output = new MemoryStream())
+                {
+                    using (BrotliStream dstream = new BrotliStream(input, CompressionMode.Decompress))
+                    {
+                        dstream.CopyTo(output);
+                        dstream.Flush();
+                    }
+
+                    return output.ToArray();
+                }
+            }
+        }
+
+        public static byte[] Deflate(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {
             using (MemoryStream output = new MemoryStream())
             {
@@ -62,20 +99,16 @@ namespace WebHooksFileInMessagesEncoder
                     dstream.Flush();
                 }
 
-                output.SetLength(output.Length - 7);
+                output.SetLength(output.Length - 5);
 
                 return output.ToArray();
             }
         }
 
-        public static byte[] Decompress(this byte[] data)
+        public static byte[] Inflate(this byte[] data)
         {
-            using (MemoryStream input = new MemoryStream(data)) //+ CompressHeader.Length))
+            using (MemoryStream input = new MemoryStream(data, 0, data.Length - 2)) //+ CompressHeader.Length))
             {
-                //input.Write(data);
-                //input.Write(CompressHeader);
-                //input.Position = 0;
-
                 using (MemoryStream output = new MemoryStream())
                 {
                     using (DeflateStream dstream = new DeflateStream(input, CompressionMode.Decompress))
