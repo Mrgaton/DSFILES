@@ -37,7 +37,7 @@ namespace DSFiles_Server
                         break;
                 }
 
-                if (response.OutputStream.CanWrite)
+                /*if (response.OutputStream.CanWrite)
                 {
                     try
                     {
@@ -47,7 +47,7 @@ namespace DSFiles_Server
                     {
 
                     }
-                }
+                }*/
             }
         }
         public static void WriteException(ref Exception ex, params string[] messages)

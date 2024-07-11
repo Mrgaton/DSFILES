@@ -12,10 +12,12 @@ namespace DSFiles_Server
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
         public static void HandleFile(ref HttpListenerRequest req, ref HttpListenerResponse res)
         {
+            bool fullFile = req.QueryString.Get("file") != null;
+
             string[] urlSplited = req.Url.AbsolutePath.Split('/');
             string[] seedSpltied = urlSplited[2].Split(':');
 
-            if (seedSpltied.Length! > 2 && urlSplited.Length != 3)
+            if (seedSpltied.Length !> 2 && urlSplited.Length != 3)
             {
                 res.SendStatus(400);
                 return;
@@ -44,8 +46,6 @@ namespace DSFiles_Server
 
             //res.Send('[' + string.Join(", ",attachements)+ ']');
 
-            Console.WriteLine(req.Headers.Get("user-agent"));
-
             if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && attachments.Count() > 2)
             {
                 res.SendStatus(503);
@@ -54,16 +54,17 @@ namespace DSFiles_Server
 
             contentTypeProvider.TryGetContentType(fileName, out string? contentType);
             res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
-            res.AddHeader("Accept-Ranges", "bytes");
             res.AddHeader("Cache-Control", "public, max-age=31536000");
+
+            if (!fullFile) res.Headers.Set(HttpResponseHeader.AcceptRanges, "bytes");
 
             string range = req.Headers.Get("range");
 
-            if (range != null)
+            if (!fullFile && range != null)
             {
                 if (compressed)
                 {
-                    res.SendStatus(500, "the data content is compressed and cant send specific chunks");
+                    res.SendStatus(500, "The data content is compressed and cant send specific chunks");
                     return;
                 }
 
@@ -92,6 +93,14 @@ namespace DSFiles_Server
             res.ContentLength64 = (long)contentLength;
 
             res.OutputStream.Write([], 0, 0);
+
+            Thread.Sleep(200);
+
+            if (!res.OutputStream.CanWrite)
+            {
+                res.Close();
+                return;
+            }
 
             SendFullFile(res, attachments);
         }
@@ -129,10 +138,13 @@ namespace DSFiles_Server
 
                         retry++;
 
-                        if (retry! > MaxRetries)
+                        if (retry > MaxRetries)
                         {
-                            goto rety;
+                            res.Close();
+                            return;
                         }
+
+                        goto rety;
                     }
 
                     var decoded = DSFilesHelper.U(ref dataPart);
@@ -161,7 +173,7 @@ namespace DSFiles_Server
 
             try
             {
-                Console.WriteLine("Downloading id " + attachement + " " + (chunk) + "/" + attachments.Length);
+                Console.WriteLine("Downloading chunk " + attachement + " " + (chunk + 1) + "/" + attachments.Length);
 
                 dataPart = await client.GetByteArrayAsync(attachement);
             }
@@ -171,10 +183,13 @@ namespace DSFiles_Server
 
                 retry++;
 
-                if (retry! > MaxRetries)
+                if (retry > MaxRetries)
                 {
-                    goto rety;
+                    res.Close();
+                    return;
                 }
+
+                goto rety;
             }
 
             var decoded = DSFilesHelper.U(ref dataPart);

@@ -99,7 +99,7 @@ namespace WebHooksFileInMessagesEncoder
                     dstream.Flush();
                 }
 
-                output.SetLength(output.Length - 5);
+                output.SetLength(output.Length - 7);
 
                 return output.ToArray();
             }
@@ -107,7 +107,7 @@ namespace WebHooksFileInMessagesEncoder
 
         public static byte[] Inflate(this byte[] data)
         {
-            using (MemoryStream input = new MemoryStream(data, 0, data.Length - 2)) //+ CompressHeader.Length))
+            using (MemoryStream input = new MemoryStream(data, 0, data.Length)) //+ CompressHeader.Length))
             {
                 using (MemoryStream output = new MemoryStream())
                 {

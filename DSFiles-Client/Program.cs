@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Security;
 using System.Security.Permissions;
 using System.Text;
+using System.Web;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace WebHooksFileInMessagesEncoder
@@ -53,8 +54,8 @@ namespace WebHooksFileInMessagesEncoder
             sb.AppendLine($"`FileName:` {fileName}");
             sb.AppendLine($"`DownloadToken:` {fileSeed.Split('/')[0]}");
             sb.AppendLine($"`RemoveToken:` {fileSeed.Split('/').Last()}");
-            sb.AppendLine($"`WebLink:` https://gato.ovh/df/{string.Join(':', fileSeed.Split(':').Skip(1)).Split('/')[0]}");
-            sb.AppendLine($"`DownloadLink:` https://gato.ovh/df/{fileSeed.Split('/')[0]}");
+            sb.AppendLine($"`WebLink:` https://df.gato.ovh/df/{fileSeed.Split('/')[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}");
+            //sb.AppendLine($"`DownloadLink:` https://df.gato.ovh/df/{fileSeed.Split('/')[0]}");
 
             string jspasteSeed = SendJspaste(fileSeed);
 
