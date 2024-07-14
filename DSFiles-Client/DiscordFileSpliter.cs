@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using WebHooksFileInMessagesEncoder;
+using DSFiles_Client;
 
 namespace DSFiles
 {
@@ -157,7 +157,7 @@ namespace DSFiles
         /// <param name="buffer"></param>
         /// <param name="compress"></param>
         /// <returns></returns>
-        public static async Task<(byte[] seed, byte[] secret)> Encode(WebHookHelper webHook, string filePath, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<(byte[] seed, byte[] secret, ulong size)> Encode(WebHookHelper webHook, string filePath, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
             using (FileStream stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
@@ -165,7 +165,7 @@ namespace DSFiles
             }
         }
 
-        public static async Task<(byte[] seed, byte[] secret)> Encode(WebHookHelper webHook, Stream fstream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<(byte[] seed, byte[] secret, ulong size)> Encode(WebHookHelper webHook, Stream fstream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
             using (var stream = fstream)
             {
@@ -175,8 +175,10 @@ namespace DSFiles
 
         private static Stopwatch sw = new Stopwatch();
 
-        public static async Task<(byte[] seed, byte[] secret)> EncodeCore(WebHookHelper webHook, Stream dataStream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<(byte[] seed, byte[] secret, ulong size)> EncodeCore(WebHookHelper webHook, Stream dataStream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
+            ulong encodedSize = 0;
+
             bool compress = compressionLevel != CompressionLevel.NoCompression;
 
             Stream tempCompressorStream = compress ? StreamCompression.GetCompressorStream((ulong)dataStream.Length) : null;
@@ -224,7 +226,7 @@ namespace DSFiles
             {
                 seedData.WriteByte(compress ? (byte)255 : (byte)0);
                 await seedData.WriteAsync(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
-                await seedData.WriteAsync(BitConverter.GetBytes((ulong)dataStream.Length), 0, sizeof(ulong));
+                await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
 
                 int messagesToSend = (int)((ulong)dataStream.Length / amountPerFile) + 1, messagesSended = 0;
 
@@ -306,7 +308,7 @@ namespace DSFiles
 
                 WriteBuffer(CompressArray(attachementsIdsList), seedData);
 
-                return (seedData.ToArray().Deflate(), CompressArray(messagesIdsList).Deflate());
+                return (seedData.ToArray().Deflate(), CompressArray(messagesIdsList).Deflate(), encodedSize);
             }
         }
 

@@ -13,6 +13,7 @@ namespace DSFiles_Server
             return values.FirstOrDefault();
         }
     }
+
     public static class HttpListenerResponseExtensions
     {
         public static void SendStatus(this HttpListenerResponse res, int status, string data = null)
@@ -22,7 +23,6 @@ namespace DSFiles_Server
             if (data == null)
             {
                 res.Close();
-
                 return;
             }
 
@@ -30,17 +30,18 @@ namespace DSFiles_Server
         }
 
         public static void Send(this HttpListenerResponse res, string data) => Send(res, Encoding.UTF8.GetBytes(data));
+
         public static void Send(this HttpListenerResponse res, byte[] data)
         {
             res.ContentLength64 = data.Length;
             res.OutputStream.Write(data, 0, data.Length);
             res.OutputStream.Close();
         }
+
         public static void Redirect(this HttpListenerResponse res, string url)
         {
             res.Headers.Set(HttpRequestHeader.ContentLocation, url);
             res.StatusCode = 301;
         }
-
     }
 }

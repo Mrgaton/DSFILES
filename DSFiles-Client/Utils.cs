@@ -1,7 +1,7 @@
 ﻿using System.IO.Compression;
 using System.Text;
 
-namespace WebHooksFileInMessagesEncoder
+namespace DSFiles_Client
 {
     public static class Base64Url
     {
@@ -9,6 +9,7 @@ namespace WebHooksFileInMessagesEncoder
 
         public static byte[] FromBase64Url(string data) => Convert.FromBase64String(data.Replace('_', '/').Replace('-', '+').PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
     }
+
     public static class TimespanUtils
     {
         public static string ToReadableAgeString(this TimeSpan span)

@@ -1,5 +1,5 @@
-﻿
-using Microsoft.AspNetCore.StaticFiles;
+﻿using Microsoft.AspNetCore.StaticFiles;
+using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Text;
 
@@ -10,104 +10,120 @@ namespace DSFiles_Server
         private static HttpClient client = new HttpClient();
         private static FileExtensionContentTypeProvider contentTypeProvider = new FileExtensionContentTypeProvider();
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
+
         public static void HandleFile(ref HttpListenerRequest req, ref HttpListenerResponse res)
         {
-            bool fullFile = req.QueryString.Get("file") != null;
-
-            string[] urlSplited = req.Url.AbsolutePath.Split('/');
-            string[] seedSpltied = urlSplited[2].Split(':');
-
-            if (seedSpltied.Length !> 2 && urlSplited.Length != 3)
+            try
             {
-                res.SendStatus(400);
-                return;
-            }
+                bool fullFile = req.QueryString.Get("file") != null;
 
-            string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
+                string[] urlSplited = req.Url.AbsolutePath.Split('/');
+                string[] seedSpltied = urlSplited[2].Split(':');
 
-            string extension = Path.GetExtension(fileName);
-
-            byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
-
-            bool compressed = seed[0] == 255;
-
-            ulong channelId = BitConverter.ToUInt64(seed, 1);
-            ulong contentLength = BitConverter.ToUInt64(seed, 1 + sizeof(ulong));
-            ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + (sizeof(ulong) * 2)).ToArray());
-
-            int i = 0;
-
-            var attachments = ids.Select(id =>
-            {
-                string url = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{DSFilesHelper.EncodeAttachementName(channelId, i > 0 ? ids[i - 1] : int.MaxValue, i + 1, ids.Length)}";
-                i++;
-                return url;
-            }).ToArray();
-
-            //res.Send('[' + string.Join(", ",attachements)+ ']');
-
-            if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && attachments.Count() > 2)
-            {
-                res.SendStatus(503);
-                return;
-            }
-
-            contentTypeProvider.TryGetContentType(fileName, out string? contentType);
-            res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
-            res.AddHeader("Cache-Control", "public, max-age=31536000");
-
-            if (!fullFile) res.Headers.Set(HttpResponseHeader.AcceptRanges, "bytes");
-
-            string range = req.Headers.Get("range");
-
-            if (!fullFile && range != null)
-            {
-                if (compressed)
+                if (seedSpltied.Length! > 2 && urlSplited.Length != 3)
                 {
-                    res.SendStatus(500, "The data content is compressed and cant send specific chunks");
+                    res.SendStatus(400);
                     return;
                 }
 
-                long rangeNum = long.Parse(string.Join("", range.Where(c => char.IsNumber(c)).ToArray()));
+                string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
 
-                long chunk = rangeNum / CHUNK_SIZE;
+                string extension = Path.GetExtension(fileName);
 
-                long start = chunk * CHUNK_SIZE;
-                long end = start + CHUNK_SIZE - 1;
+                byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
 
-                if (end + 1 + CHUNK_SIZE > (long)contentLength)
+                bool compressed = seed[0] == 255;
+
+                ulong channelId = BitConverter.ToUInt64(seed, 1);
+                ulong contentLength = BitConverter.ToUInt64(seed, 1 + sizeof(ulong));
+                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + (sizeof(ulong) * 2)).ToArray());
+
+                int i = 0;
+
+                var attachments = ids.Select(id =>
                 {
-                    end = (long)contentLength - 1;
+                    string url = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{DSFilesHelper.EncodeAttachementName(channelId, i > 0 ? ids[i - 1] : int.MaxValue, i + 1, ids.Length)}";
+                    i++;
+                    return url;
+                }).ToArray();
+
+                //res.Send('[' + string.Join(", ",attachements)+ ']');
+
+                if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && attachments.Count() > 2)
+                {
+                    res.SendStatus(503);
+                    return;
                 }
 
-                res.ContentLength64 = end - start + 1;
-                res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
-                res.StatusCode = 206;
-                res.OutputStream.Flush();
+                contentTypeProvider.TryGetContentType(fileName, out string? contentType);
+                res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
+                res.AddHeader("Cache-Control", "public, max-age=31536000");
 
+                if (compressed)
+                {
+                    res.AddHeader("content-encoding", "br");
+                }
 
-                SendChunk(res, attachments, chunk);
-                return;
+                if (fullFile)
+                {
+                    res.AddHeader("Content-Disposition", $"attachment; filename=\"{fileName}\"");
+                }
+
+                if (!fullFile) res.Headers.Set(HttpResponseHeader.AcceptRanges, "bytes");
+
+                string range = req.Headers.Get("range");
+
+                if (!fullFile && range != null)
+                {
+                    if (compressed)
+                    {
+                        res.SendStatus(500, "The data content is compressed and cant send specific chunks");
+                        return;
+                    }
+
+                    long rangeNum = long.Parse(string.Join("", range.Where(c => char.IsNumber(c)).ToArray()));
+
+                    long chunk = rangeNum / CHUNK_SIZE;
+
+                    long start = chunk * CHUNK_SIZE;
+                    long end = start + CHUNK_SIZE - 1;
+
+                    if (end + 1 + CHUNK_SIZE > (long)contentLength)
+                    {
+                        end = (long)contentLength - 1;
+                    }
+
+                    res.ContentLength64 = end - start + 1;
+                    res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
+                    res.StatusCode = 206;
+                    res.OutputStream.Flush();
+
+                    SendChunk(res, attachments, chunk);
+                    return;
+                }
+
+                res.ContentLength64 = (long)contentLength;
+
+                //Thread.Sleep(200);
+
+                if (!res.OutputStream.CanWrite)
+                {
+                    res.Close();
+                    return;
+                }
+
+                SendFullFile(res, attachments);
             }
-
-            res.ContentLength64 = (long)contentLength;
-
-            res.OutputStream.Write([], 0, 0);
-
-            Thread.Sleep(200);
-
-            if (!res.OutputStream.CanWrite)
+            catch (Exception ex)
             {
-                res.Close();
-                return;
+                res.SendStatus(500, ex.ToString());
             }
-
-            SendFullFile(res, attachments);
         }
 
         public const int RefreshUrlsChunkSize = 50;
 
         public const int MaxRetries = 3;
+
         private static async Task SendFullFile(HttpListenerResponse res, string[] attachments)
         {
             int part = 0;
@@ -132,6 +148,15 @@ namespace DSFiles_Server
 
                         dataPart = await client.GetByteArrayAsync(url);
                     }
+                    catch(HttpRequestException ex)
+                    {
+                        if (ex.StatusCode == HttpStatusCode.NotFound)
+                        {
+                            res.Headers.Clear();
+                            res.Close();
+                            return;
+                        }
+                    }
                     catch (Exception ex)
                     {
                         Program.WriteException(ref ex);
@@ -140,15 +165,17 @@ namespace DSFiles_Server
 
                         if (retry > MaxRetries)
                         {
-                            res.Close();
+                            res.Send(ex.ToString());
                             return;
                         }
 
+                        Thread.Sleep(1000);
                         goto rety;
                     }
 
                     var decoded = DSFilesHelper.U(ref dataPart);
 
+                    res.OutputStream.Write([], 0, 0);
                     await res.OutputStream.WriteAsync(decoded, 0, dataPart.Length);
                 }
 
@@ -163,7 +190,6 @@ namespace DSFiles_Server
         private static async Task SendChunk(HttpListenerResponse res, string[] attachments, long chunk)
         {
             int retry = 0;
-
 
             string attachement = (await DSFilesHelper.RefreshUrls([attachments[chunk]]))[0];
 
@@ -185,17 +211,21 @@ namespace DSFiles_Server
 
                 if (retry > MaxRetries)
                 {
-                    res.Close();
+                    res.Send(ex.ToString());
                     return;
                 }
 
+                Thread.Sleep(1000);
                 goto rety;
             }
 
             var decoded = DSFilesHelper.U(ref dataPart);
 
-            await res.OutputStream.WriteAsync(decoded, 0, dataPart.Length);
-            await res.OutputStream.FlushAsync();
+            if (res.OutputStream.CanWrite)
+            {
+                await res.OutputStream.WriteAsync(decoded, 0, dataPart.Length);
+                await res.OutputStream.FlushAsync();
+            }
 
             res.Close();
         }

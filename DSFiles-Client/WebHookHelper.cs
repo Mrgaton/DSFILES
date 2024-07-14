@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace WebHooksFileInMessagesEncoder
+namespace DSFiles_Client
 {
     public sealed class WebHookHelper
     {
@@ -113,6 +113,10 @@ namespace WebHooksFileInMessagesEncoder
                     {
                         Thread.Sleep((int)((double)json["retry_after"] * 1000) + 1);
                         goto retry;
+                    }
+                    else
+                    {
+                        Console.WriteLine(json);
                     }
                 }
                 else if (!string.IsNullOrEmpty(result))

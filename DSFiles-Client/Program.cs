@@ -1,15 +1,19 @@
 ﻿using DSFiles;
 using JSPasteNet;
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security;
+using System.Security.AccessControl;
 using System.Security.Permissions;
+using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using System.Web;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
-namespace WebHooksFileInMessagesEncoder
+namespace DSFiles_Client
 {
     internal class Program
     {
@@ -29,11 +33,15 @@ namespace WebHooksFileInMessagesEncoder
             }
         }
 
+        private const string URLProtocol = "DSFILES";
+
         private const string WebHookFileName = "WebHook.dat";
 
         public const string UnsendedIds = "Missing.dat";
 
         private const string UploadedFiles = "Uploaded.log";
+
+        public static string? API_TOKEN = null;
 
         private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.Append, FileAccess.Write, FileShare.ReadWrite));
 
@@ -45,21 +53,29 @@ namespace WebHooksFileInMessagesEncoder
             return Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
         }
 
-        private static string WriteUploaded(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper)
+        private static string WriteUploaded(string fileName, byte[] seed, byte[] secret, ulong size, WebHookHelper webHookHelper)
         {
             var fileSeed = FileSeedToString(fileName, seed, secret, webHookHelper);
+            var seedSplited = fileSeed.Split('/');
 
             StringBuilder sb = new StringBuilder();
 
             sb.AppendLine($"`FileName:` {fileName}");
-            sb.AppendLine($"`DownloadToken:` {fileSeed.Split('/')[0]}");
-            sb.AppendLine($"`RemoveToken:` {fileSeed.Split('/').Last()}");
-            sb.AppendLine($"`WebLink:` https://df.gato.ovh/df/{fileSeed.Split('/')[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}");
+            sb.AppendLine($"`DownloadToken:` {seedSplited[0]}");
+            sb.AppendLine($"`RemoveToken:` {seedSplited.Last()}");
+            sb.AppendLine($"`WebLink:` https://df.gato.ovh/df/{seedSplited[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}");
+
             //sb.AppendLine($"`DownloadLink:` https://df.gato.ovh/df/{fileSeed.Split('/')[0]}");
 
             string jspasteSeed = SendJspaste(fileSeed);
 
             sb.AppendLine($"`Shortened:` {jspasteSeed}");
+
+            DSServerHelper.AddFile(fileName,
+                seedSplited[0].Split(':').Last(),
+                seedSplited.Last(),
+                jspasteSeed,
+                size).GetAwaiter().GetResult();
 
             //UploadedFilesWriter.BaseStream.Position = UploadedFilesWriter.BaseStream.Length - 1;
             UploadedFilesWriter.WriteLine(sb.ToString());
@@ -100,58 +116,26 @@ namespace WebHooksFileInMessagesEncoder
                .Split('/')[0];
         }
 
-        /*[DllImport("shell32.dll")]
-        static extern IntPtr SHBrowseForFolder(ref BROWSEINFO lpbi);
-
-        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-        static extern bool SHGetPathFromIDList(IntPtr pidl, StringBuilder pszPath);
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct BROWSEINFO
-        {
-            public IntPtr hwndOwner;
-            public IntPtr pidlRoot;
-            public string pszDisplayName;
-            public string lpszTitle;
-            public uint ulFlags;
-            public IntPtr lpfn;
-            public IntPtr lParam;
-            public int iImage;
-        }
-
-        private static void SelectFolder()
-        {
-            BROWSEINFO bi = new BROWSEINFO
-            {
-                lpszTitle = "Seleciona la carpeta para extraer",
-                pszDisplayName = "sexo",
-                ulFlags = 0x0001 // BIF_RETURNONLYFSDIRS
-            };
-
-            IntPtr pidl = SHBrowseForFolder(ref bi);
-            if (pidl != IntPtr.Zero)
-            {
-                StringBuilder path = new StringBuilder(260); // MAX_PATH
-                if (SHGetPathFromIDList(pidl, path))
-                {
-                    Console.WriteLine($"Selected folder: {path}");
-                }
-            }
-
-           ( new FolderBrowserDialog()
-           {
-               AutoUpgradeEnabled =true,
-               Description="Select folder to extract content",
-               OkRequiresInteraction=false,
-               ShowNewFolderButton=false,
-               UseDescriptionForTitle=true
-           }).ShowDialog();
-        }*/
-
         private static string sevenZipPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"7-Zip\");
 
         private static void SevenZipPaths(string outputFile, CompressionLevel compressionLevel, params string[] paths)
         {
+            if (!File.Exists(Path.Combine(sevenZipPath, "7z.dll")))
+            {
+                Console.WriteLine("Installing 7zip please wait");
+
+                Process.Start(new ProcessStartInfo()
+                {
+                    FileName = "winget",
+                    Arguments = "install 7zip.7zip",
+                    CreateNoWindow = false,
+                    RedirectStandardError = false,
+                    RedirectStandardInput = false,
+                    RedirectStandardOutput = false,
+                    UseShellExecute = false,
+                }).WaitForExit();
+            }
+
             int processors = Math.Min(Environment.ProcessorCount, 4);
 
             int level = 9;
@@ -187,7 +171,81 @@ namespace WebHooksFileInMessagesEncoder
         [STAThread]
         private static void Main(string[] args)
         {
-            //args = ["WebHook_pablo.txt"];
+            if (args.Length > 0 && args[0].StartsWith($"{URLProtocol}://", StringComparison.InvariantCultureIgnoreCase))
+            {
+                args = args[0].Split('/').Skip(2).Select(Uri.UnescapeDataString).Select(Environment.ExpandEnvironmentVariables).ToArray();
+
+                foreach (var arg in args)
+                {
+                    var splited = arg.Split('=');
+
+                    if (splited.Length == 2 && splited[0].ToLower() == "token")
+                    {
+                        API_TOKEN = splited[1];
+                    }
+                }
+            }
+
+            using (var protocolKey = Registry.ClassesRoot.OpenSubKey(URLProtocol, true))
+            {
+                bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+
+                if (admin && protocolKey == null)
+                {
+                    using (var protocol = Registry.ClassesRoot.CreateSubKey(URLProtocol))
+                    {
+                        protocol.SetValue(string.Empty, $"URL: {URLProtocol} Protocol");
+                        protocol.SetValue("URL Protocol", string.Empty);
+
+                        using (var protocolShellKey = protocol.CreateSubKey("shell"))
+                        {
+                            protocolShellKey.CreateSubKey("open");
+                        }
+
+                        RegistrySecurity security = new RegistrySecurity();
+
+                        security.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                            RegistryRights.FullControl,
+                            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                            PropagationFlags.None,
+                            AccessControlType.Allow));
+
+                        protocol.SetAccessControl(security);
+                    }
+                }
+
+                if (protocolKey == null && !admin)
+                {
+                    var exception = (Exception)(new SecurityException("Can't create registry url protocol please run as administrator"));
+                    WriteException(ref exception);
+                    return;
+                }
+
+                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"{URLProtocol}\\shell\\open", true).CreateSubKey("command"))
+                {
+                    commandKey.SetValue(string.Empty, Process.GetCurrentProcess().MainModule.FileName + " %1");
+                }
+            }
+
+            //Console.WriteLine('[' + string.Join(", ", args.Select(c => '\"' + c + '\"')) + ']');
+            //args = ["upload", "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2OGJkNTA5YzdmZjliOTcxYmUzMzkwNyIsImRhdGEiOiJBQUFBQVEiLCJpYXQiOjE3MjA3MjMzNzh9.eBcyUX7r1oQgX_gPbu6BDmffVVttxam9zSJ_pYQDvP4"];
+
+            if (args.Length > 0 && args[0] == "upload")
+            {
+                OpenFileDialog ofd = new OpenFileDialog();
+
+                ofd.ValidateNames = false;
+                ofd.CheckFileExists = false;
+                ofd.CheckPathExists = true;
+                ofd.Multiselect = true;
+                ofd.DereferenceLinks = true;
+                ofd.FileName = "Upload Selection.";
+
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    args = ofd.FileNames;
+                }
+            }
 
             if (!DirSetted) throw new IOException("What?");
 
@@ -199,21 +257,6 @@ namespace WebHooksFileInMessagesEncoder
                     Console.WriteLine(e.ExceptionObject.ToString());
                     Console.ReadKey();
                 };
-            }
-
-            if (!File.Exists(Path.Combine(sevenZipPath, "7z.dll")))
-            {
-                Console.WriteLine("Installing 7zip please wait");
-                Process.Start(new ProcessStartInfo()
-                {
-                    FileName = "winget",
-                    Arguments = "install 7zip.7zip",
-                    CreateNoWindow = false,
-                    RedirectStandardError = false,
-                    RedirectStandardInput = false,
-                    RedirectStandardOutput = false,
-                    UseShellExecute = false,
-                }).WaitForExit();
             }
 
             if (args.Length > 0 && args[0] == "/updateKey")
@@ -303,6 +346,13 @@ namespace WebHooksFileInMessagesEncoder
 
                     Console.WriteLine("Removing file chunks (" + ids.Length + ")");
                     webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
+
+                    if (args.Length > 2)
+                    {
+                        DSServerHelper.RemoveFile(args[2]).GetAwaiter().GetResult();
+                    }
+
+                    Thread.Sleep(2000);
                     return;
                 }
                 else if (args[0].Equals("download", StringComparison.InvariantCultureIgnoreCase))
@@ -315,7 +365,7 @@ namespace WebHooksFileInMessagesEncoder
                 {
                     var result = DiscordFilesSpliter.Encode(webHookHelper, args[1]).GetAwaiter().GetResult();
 
-                    string jspLink = WriteUploaded(args[1], result.seed, result.secret, webHookHelper);
+                    string jspLink = WriteUploaded(args[1], result.seed, result.secret, result.size, webHookHelper);
 
                     Console.Write("FileSeed: " + jspLink);
                     return;
@@ -449,7 +499,7 @@ namespace WebHooksFileInMessagesEncoder
 
                 string fileName = Path.GetFileName(filePath);
 
-                string fileSeed = WriteUploaded(fileName, result.seed, result.secret, webHookHelper);
+                string fileSeed = WriteUploaded(fileName, result.seed, result.secret, result.size, webHookHelper);
 
                 try
                 {
@@ -529,7 +579,7 @@ namespace WebHooksFileInMessagesEncoder
             Console.ReadLine();
         }
 
-        private static HttpClient client = new HttpClient();
+        public static HttpClient client = new HttpClient();
 
         public static bool CheckFolderPermissions(string folderPath, FileIOPermissionAccess permission = FileIOPermissionAccess.Write)
         {

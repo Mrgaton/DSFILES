@@ -6,7 +6,9 @@ namespace DSFiles_Server
     internal class DSFilesHelper
     {
         private static byte[] XorKey = Properties.Resources.bin;
+
         public static byte[] U(ref byte[] data) => U(ref data, ref XorKey);
+
         public static byte[] U(ref byte[] data, ref byte[] key)
         {
             byte[] result = new byte[data.Length];
@@ -55,8 +57,11 @@ namespace DSFiles_Server
                 }
             }
         }
+
         public static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
+
         public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data);
+
         private static ulong[] ArrayDeserealizer(byte[] data)
         {
             using (MemoryStream memStr = new MemoryStream(data))

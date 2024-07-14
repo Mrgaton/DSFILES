@@ -9,9 +9,9 @@ namespace DSFiles_Server
 
         public static byte[] FromBase64Url(string data) => Convert.FromBase64String(data.Replace('_', '/').Replace('-', '+').PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
     }
+
     public static class TimespanUtils
     {
-
         public static string ToReadableAgeString(this TimeSpan span)
         {
             return string.Format("{0:0}", span.Days / 365.25);
