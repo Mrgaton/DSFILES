@@ -1,19 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
+using System.Text.Json.Nodes;
 
 namespace DSFiles_Client
 {
     internal class DSServerHelper
     {
-        public const string API_ENDPOINT = "http://127.0.0.1:3000";
+        public const string API_ENDPOINT = "https://gato.ovh/df";
+
         public static async Task AddFile(string fileName, string downloadToken, string removeToken, string jspLink, ulong size)
         {
-            using (var req = new HttpRequestMessage(HttpMethod.Post, API_ENDPOINT +  "/file"))
+            using (var req = new HttpRequestMessage(HttpMethod.Post, API_ENDPOINT + "/file"))
             {
                 req.Content = new StringContent(JsonSerializer.Serialize(new Dictionary<string, object>()
                 {
@@ -28,10 +25,21 @@ namespace DSFiles_Client
 
                 using (var res = Program.client.SendAsync(req).Result)
                 {
-                    Console.WriteLine(res.Content.ReadAsStringAsync().Result);
+                    string response = res.Content.ReadAsStringAsync().Result;
+
+#if DEBUG
+                    Console.WriteLine(response);
+                    Console.WriteLine();
+#endif
+
+                    JsonNode json = JsonNode.Parse(response);
+
+                    Console.WriteLine("Uploaded to website as " + json["name"]);
+                    Console.WriteLine();
                 }
             }
         }
+
         public static async Task RemoveFile(string fileId)
         {
             using (var req = new HttpRequestMessage(HttpMethod.Delete, API_ENDPOINT + "/file/" + fileId))

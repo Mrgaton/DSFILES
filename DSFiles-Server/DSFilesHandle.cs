@@ -1,5 +1,6 @@
-﻿using Microsoft.AspNetCore.StaticFiles;
-using System.ComponentModel.DataAnnotations;
+﻿#define RANGE_FULLFILE
+
+using Microsoft.AspNetCore.StaticFiles;
 using System.Net;
 using System.Text;
 
@@ -11,7 +12,7 @@ namespace DSFiles_Server
         private static FileExtensionContentTypeProvider contentTypeProvider = new FileExtensionContentTypeProvider();
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
-        public static void HandleFile(ref HttpListenerRequest req, ref HttpListenerResponse res)
+        public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
         {
             try
             {
@@ -27,8 +28,6 @@ namespace DSFiles_Server
                 }
 
                 string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
-
-                string extension = Path.GetExtension(fileName);
 
                 byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
 
@@ -49,15 +48,26 @@ namespace DSFiles_Server
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
 
-                if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && attachments.Count() > 2)
+                if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 2)
                 {
                     res.SendStatus(503);
                     return;
                 }
 
                 contentTypeProvider.TryGetContentType(fileName, out string? contentType);
+
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
-                res.AddHeader("Cache-Control", "public, max-age=31536000");
+                res.AddHeader("Accept-Ranges", "bytes");
+                res.AddHeader("ETAG", seedSpltied[0]);
+
+                if (ids.Length > 2)
+                {
+                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                }
+                else
+                {
+                    res.AddHeader("Cache-Control", "public, max-age=31536000");
+                }
 
                 if (compressed)
                 {
@@ -73,6 +83,14 @@ namespace DSFiles_Server
 
                 string range = req.Headers.Get("range");
 
+                /*StringBuilder sb = new StringBuilder();
+                var copy = req.Headers;
+                foreach (var h in req.Headers.AllKeys.Select(e => new KeyValuePair<string, string>(e, copy.Get(e))))
+                {
+                    sb.AppendLine(h.Key + ':' + h.Value);
+                }
+                res.Headers.Add("cosa", Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString())));*/
+
                 if (!fullFile && range != null)
                 {
                     if (compressed)
@@ -81,10 +99,10 @@ namespace DSFiles_Server
                         return;
                     }
 
-                    long rangeNum = long.Parse(string.Join("", range.Where(c => char.IsNumber(c)).ToArray()));
+                    long rangeNum = long.Parse(string.Join("", range.Where(char.IsNumber)));
 
-                    long chunk = rangeNum / CHUNK_SIZE;
-
+                    int chunk = (int)(rangeNum / CHUNK_SIZE);
+#if !RANGE_FULLFILE
                     long start = chunk * CHUNK_SIZE;
                     long end = start + CHUNK_SIZE - 1;
 
@@ -96,9 +114,20 @@ namespace DSFiles_Server
                     res.ContentLength64 = end - start + 1;
                     res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
                     res.StatusCode = 206;
-                    res.OutputStream.Flush();
+                    await res.OutputStream.FlushAsync();
 
-                    SendChunk(res, attachments, chunk);
+                    await SendChunk(res, attachments, chunk);
+#else
+                    long start = chunk * CHUNK_SIZE;
+                    long end = end = (long)contentLength - 1;
+
+                    res.ContentLength64 = end - start + 1;
+                    res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
+                    res.StatusCode = 206;
+                    await res.OutputStream.FlushAsync();
+
+                    await SendFullFile(res, attachments.Skip(chunk).ToArray());
+#endif
                     return;
                 }
 
@@ -112,7 +141,7 @@ namespace DSFiles_Server
                     return;
                 }
 
-                SendFullFile(res, attachments);
+                await SendFullFile(res, attachments);
             }
             catch (Exception ex)
             {
@@ -148,7 +177,7 @@ namespace DSFiles_Server
 
                         dataPart = await client.GetByteArrayAsync(url);
                     }
-                    catch(HttpRequestException ex)
+                    catch (HttpRequestException ex)
                     {
                         if (ex.StatusCode == HttpStatusCode.NotFound)
                         {
@@ -187,11 +216,15 @@ namespace DSFiles_Server
             res.Close();
         }
 
-        private static async Task SendChunk(HttpListenerResponse res, string[] attachments, long chunk)
+        private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
         {
             int retry = 0;
 
-            string attachement = (await DSFilesHelper.RefreshUrls([attachments[chunk]]))[0];
+            int part = (chunk / RefreshUrlsChunkSize) * RefreshUrlsChunkSize;
+
+            string[] refreshedUrls = await DSFilesHelper.RefreshUrls(attachments.Skip(part).Take(attachments.Length - part > 0 ? RefreshUrlsChunkSize : part - attachments.Length).ToArray());
+
+            string attachement = refreshedUrls[chunk - part];
 
             byte[] dataPart = null;
 

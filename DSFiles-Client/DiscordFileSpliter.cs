@@ -1,9 +1,9 @@
-﻿using DSFiles_Client.Properties;
+﻿using DSFiles_Client;
+using DSFiles_Client.Properties;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using DSFiles_Client;
 
 namespace DSFiles
 {

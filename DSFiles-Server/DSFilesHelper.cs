@@ -5,6 +5,8 @@ namespace DSFiles_Server
 {
     internal class DSFilesHelper
     {
+        public static HttpClient client = new HttpClient();
+
         private static byte[] XorKey = Properties.Resources.bin;
 
         public static byte[] U(ref byte[] data) => U(ref data, ref XorKey);
@@ -39,7 +41,52 @@ namespace DSFiles_Server
             return result;
         }
 
+        private static readonly Dictionary<string, string> cache = new Dictionary<string, string>();
+
+        private static readonly int maxCacheSize = 3 * 1000;
+
         public static async Task<string[]> RefreshUrls(string[] urls)
+        {
+            if (urls.Length > 50) throw new Exception("urls length cant be bigger than 50");
+
+            List<string> refreshedUrls = new List<string>();
+            List<string> urlsToRefresh = new List<string>();
+
+            foreach (var url in urls)
+            {
+                if (cache.ContainsKey(url))
+                {
+                    refreshedUrls.Add(cache[url]);
+                }
+                else
+                {
+                    urlsToRefresh.Add(url);
+                }
+            }
+
+            if (urlsToRefresh.Count > 0)
+            {
+                string[] refreshedUrlsFromApi = await RefreshUrlsCore(urlsToRefresh.ToArray());
+
+                for (int i = 0; i < urlsToRefresh.Count; i++)
+                {
+                    if (cache.Count >= maxCacheSize)
+                    {
+                        var oldestKey = cache.Keys.First();
+
+                        cache.Remove(oldestKey);
+                    }
+
+                    cache[urlsToRefresh[i]] = refreshedUrlsFromApi[i];
+
+                    refreshedUrls.Add(refreshedUrlsFromApi[i]);
+                }
+            }
+
+            return refreshedUrls.ToArray();
+        }
+
+        private static async Task<string[]> RefreshUrlsCore(string[] urls)
         {
             if (urls.Length > 50) throw new Exception("urls length cant be bigger than 50");
 
@@ -49,7 +96,7 @@ namespace DSFiles_Server
 
                 message.Content = new StringContent(data);
 
-                using (HttpResponseMessage response = await new HttpClient().SendAsync(message))
+                using (HttpResponseMessage response = await client.SendAsync(message))
                 {
                     var str = await response.Content.ReadAsStringAsync();
 

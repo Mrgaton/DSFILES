@@ -9,7 +9,6 @@ using System.Security.AccessControl;
 using System.Security.Permissions;
 using System.Security.Principal;
 using System.Text;
-using System.Text.Json;
 using System.Web;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
@@ -23,7 +22,7 @@ namespace DSFiles_Client
         {
             try
             {
-                Directory.SetCurrentDirectory(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+                Directory.SetCurrentDirectory(Path.GetDirectoryName(Assembly.GetCallingAssembly().Location));
 
                 return true;
             }
@@ -127,7 +126,7 @@ namespace DSFiles_Client
                 Process.Start(new ProcessStartInfo()
                 {
                     FileName = "winget",
-                    Arguments = "install 7zip.7zip",
+                    Arguments = "install --accept-source-agreements --accept-package-agreements 7zip.7zip",
                     CreateNoWindow = false,
                     RedirectStandardError = false,
                     RedirectStandardInput = false,
@@ -241,10 +240,12 @@ namespace DSFiles_Client
                 ofd.DereferenceLinks = true;
                 ofd.FileName = "Upload Selection.";
 
-                if (ofd.ShowDialog() == DialogResult.OK)
+                if (ofd.ShowDialog() != DialogResult.OK)
                 {
-                    args = ofd.FileNames;
+                    return;
                 }
+
+                args = ofd.FileNames;
             }
 
             if (!DirSetted) throw new IOException("What?");
@@ -268,6 +269,7 @@ namespace DSFiles_Client
                         for (int i = 0; i < 8; i++)
                         {
                             byte[] data = wc.DownloadData("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f");
+
                             Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
 
                             fs.Write(data, 0, data.Length);

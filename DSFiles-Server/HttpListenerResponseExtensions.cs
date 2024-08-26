@@ -29,19 +29,24 @@ namespace DSFiles_Server
             Send(res, Encoding.UTF8.GetBytes(data));
         }
 
+        public static void RedirectCatError(this HttpListenerResponse res, int status)
+        {
+            res.Redirect("https://http.cat/" + status);
+            res.Close();
+        }
+
         public static void Send(this HttpListenerResponse res, string data) => Send(res, Encoding.UTF8.GetBytes(data));
 
         public static void Send(this HttpListenerResponse res, byte[] data)
         {
-            res.ContentLength64 = data.Length;
-            res.OutputStream.Write(data, 0, data.Length);
-            res.OutputStream.Close();
-        }
+            try
+            {
+                res.ContentLength64 = data.Length;
+                res.OutputStream.Write(data, 0, data.Length);
+            }
+            catch { }
 
-        public static void Redirect(this HttpListenerResponse res, string url)
-        {
-            res.Headers.Set(HttpRequestHeader.ContentLocation, url);
-            res.StatusCode = 301;
+            res.OutputStream.Close();
         }
     }
 }
