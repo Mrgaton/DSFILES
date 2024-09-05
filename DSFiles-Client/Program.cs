@@ -1,4 +1,6 @@
 ﻿using DSFiles;
+using DSFiles_Client.Helpers;
+using DSFiles_Client.Utils;
 using JSPasteNet;
 using Microsoft.Win32;
 using System.Diagnostics;
@@ -6,7 +8,6 @@ using System.Net;
 using System.Reflection;
 using System.Security;
 using System.Security.AccessControl;
-using System.Security.Permissions;
 using System.Security.Principal;
 using System.Text;
 using System.Web;
@@ -22,28 +23,46 @@ namespace DSFiles_Client
         {
             try
             {
-                Directory.SetCurrentDirectory(Path.GetDirectoryName(Assembly.GetCallingAssembly().Location));
+                string currentDir = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
+
+                Directory.SetCurrentDirectory(currentDir);
+
+                string logsPath = Path.Combine(currentDir, "logs");
+
+                if (!Directory.Exists(logsPath))
+                {
+                    Directory.CreateDirectory(logsPath);
+                }
 
                 return true;
             }
-            catch
-            {
-                return false;
-            }
+            catch { }
+
+            return false;
         }
 
         private const string URLProtocol = "DSFILES";
 
-        private const string WebHookFileName = "WebHook.dat";
+        private const string WebHookFileName = "logs\\webHook.dat";
 
-        public const string UnsendedIds = "Missing.dat";
+        public const string UnsendedIds = "logs\\missing.dat";
 
-        private const string UploadedFiles = "Uploaded.log";
+        private const string UploadedFiles = "logs\\uploaded.log";
 
-        public static string? API_TOKEN = null;
+        private const string Debug = "logs\\debug.log";
 
-        private static StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.Append, FileAccess.Write, FileShare.ReadWrite));
+        public static string? API_TOKEN { get; set; }
 
+        public static readonly StreamWriter UploadedFilesWriter = new StreamWriter(File.Open(UploadedFiles, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+        public static readonly StreamWriter DebugWriter = new StreamWriter(File.Open(Debug, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+
+        public static readonly HttpClient client = new HttpClient(new HttpClientHandler()
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            AllowAutoRedirect = true,
+            SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
+            CookieContainer = new CookieContainer()
+        });
         private static string FileSeedToString(string fileName, byte[] seed, byte[] secret, WebHookHelper webHookHelper)
         {
             string extension = Path.GetExtension(fileName).TrimStart('.');
@@ -70,15 +89,17 @@ namespace DSFiles_Client
 
             sb.AppendLine($"`Shortened:` {jspasteSeed}");
 
-            DSServerHelper.AddFile(fileName,
-                seedSplited[0].Split(':').Last(),
-                seedSplited.Last(),
-                jspasteSeed,
-                size).GetAwaiter().GetResult();
+            if (!string.IsNullOrEmpty(API_TOKEN))
+            {
+                DSServerHelper.AddFile(fileName,
+                    seedSplited[0].Split(':').Last(),
+                    seedSplited.Last(),
+                    jspasteSeed,
+                    size).GetAwaiter().GetResult();
+            }
 
             //UploadedFilesWriter.BaseStream.Position = UploadedFilesWriter.BaseStream.Length - 1;
             UploadedFilesWriter.WriteLine(sb.ToString());
-            UploadedFilesWriter.Flush();
 
             webHookHelper.SendMessageInChunks(sb.ToString()).GetAwaiter().GetResult();
 
@@ -240,10 +261,7 @@ namespace DSFiles_Client
                 ofd.DereferenceLinks = true;
                 ofd.FileName = "Upload Selection.";
 
-                if (ofd.ShowDialog() != DialogResult.OK)
-                {
-                    return;
-                }
+                if (ofd.ShowDialog() != DialogResult.OK) return;
 
                 args = ofd.FileNames;
             }
@@ -264,16 +282,13 @@ namespace DSFiles_Client
             {
                 using (FileStream fs = File.Open(".\\key", FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
-                    using (WebClient wc = new WebClient())
+                    for (int i = 0; i < 8; i++)
                     {
-                        for (int i = 0; i < 8; i++)
-                        {
-                            byte[] data = wc.DownloadData("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f");
+                        byte[] data = client.GetByteArrayAsync("https://www.random.org/cgi-bin/randbyte?nbytes=16384&format=f").Result;
 
-                            Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
+                        Console.WriteLine("Downloaded " + data.Length + " (" + i + ')');
 
-                            fs.Write(data, 0, data.Length);
-                        }
+                        fs.Write(data, 0, data.Length);
                     }
                 }
 
@@ -347,6 +362,7 @@ namespace DSFiles_Client
                     ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url().Inflate());
 
                     Console.WriteLine("Removing file chunks (" + ids.Length + ")");
+
                     webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
 
                     if (args.Length > 2)
@@ -432,7 +448,7 @@ namespace DSFiles_Client
                     {
                         var wh = new WebHookHelper(cp);
 
-                        if (wh.channelId <= 0) throw new Exception("WebHook not valid");
+                        if (wh.channelId <= 0) throw new Exception("WebHook is not valid");
 
                         File.WriteAllText(WebHookFileName, cp);
 
@@ -451,7 +467,8 @@ namespace DSFiles_Client
                 if (args.Length == 1 && Directory.Exists(filePath)) args = args.Concat([""]).ToArray();
 
                 CompressionLevel compLevel = CompressionLevel.NoCompression;
-                Stream stream = null;
+
+                Stream? stream = null;
 
                 if (args.Length == 1)
                 {
@@ -464,6 +481,7 @@ namespace DSFiles_Client
                     string rootPath = ZipCompressor.GetRootPath(args);
 
                     if (File.Exists(StreamCompression.tempCompressorPath)) File.Delete(StreamCompression.tempCompressorPath);
+
                     Console.WriteLine("Compressing files please wait\n");
 
                     var compressionLevel = DiscordFilesSpliter.ShouldCompress(null, 0, false);
@@ -509,7 +527,7 @@ namespace DSFiles_Client
                 }
                 catch { }
 
-                Console.Write("File seed: " + fileSeed);
+                Console.Write("FileSeed: " + fileSeed);
 
                 Console.ForegroundColor = Console.BackgroundColor;
                 Console.ReadLine();
@@ -529,7 +547,7 @@ namespace DSFiles_Client
             string[] fileDataSplited = fileData.Split('/')[0].Split(':');
 
             string seed = fileDataSplited.Last();
-            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 ? '.' + fileDataSplited.Skip(1).First() : null);
+            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty( fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
 
             /*if (destFileName.EndsWith(".zip",StringComparison.InvariantCultureIgnoreCase))
             {
@@ -579,16 +597,6 @@ namespace DSFiles_Client
             //Console.WriteLine(Convert.ToBase64String(WFIMEncoder.Decode(fileSeed).Result).ToString());
 
             Console.ReadLine();
-        }
-
-        public static HttpClient client = new HttpClient();
-
-        public static bool CheckFolderPermissions(string folderPath, FileIOPermissionAccess permission = FileIOPermissionAccess.Write)
-        {
-            var permissionSet = new PermissionSet(PermissionState.None);
-            var neededPermission = new FileIOPermission(permission, folderPath);
-            permissionSet.AddPermission(neededPermission);
-            return permissionSet.IsSubsetOf(AppDomain.CurrentDomain.PermissionSet);
         }
 
         public static void WriteException(ref Exception ex, params string[] messages)

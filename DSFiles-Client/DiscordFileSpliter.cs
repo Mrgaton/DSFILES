@@ -1,5 +1,6 @@
 ﻿using DSFiles_Client;
 using DSFiles_Client.Properties;
+using DSFiles_Client.Utils;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
@@ -50,7 +51,7 @@ namespace DSFiles
 
         private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avi", ".png", ".jpg", ".iso"];
 
-        public static CompressionLevel ShouldCompress(string ext, long filesize, bool askToNotCompress = true)
+        public static CompressionLevel ShouldCompress(string? ext, long filesize, bool askToNotCompress = true)
         {
             bool longTime = false;
             bool notUseful = blackListedExt.Any(e => e == ext);

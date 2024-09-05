@@ -1,7 +1,7 @@
 ﻿using System.IO.Compression;
 using System.Text;
 
-namespace DSFiles_Server
+namespace DSFiles_Client.Utils
 {
     public static class Base64Url
     {
@@ -37,9 +37,9 @@ namespace DSFiles_Server
     {
         public static byte[] FromBase64(this string data) => Convert.FromBase64String(data.PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
 
-        public static byte[] FromBase64Url(this string data) => FromBase64(data.Replace('_', '/').Replace('-', '+'));
+        public static byte[] FromBase64Url(this string data) => data.Replace('_', '/').Replace('-', '+').FromBase64();
 
-        public static IEnumerable<string> SplitInParts(this string s, Int32 partLength)
+        public static IEnumerable<string> SplitInParts(this string s, int partLength)
         {
             if (s == null)
                 throw new ArgumentNullException(nameof(s));
@@ -55,7 +55,7 @@ namespace DSFiles_Server
     {
         public static string ToBase64(this byte[] data) => Convert.ToBase64String(data).Trim('=');
 
-        public static string ToBase64Url(this byte[] data) => ToBase64(data).Replace('+', '-').Replace('/', '_');
+        public static string ToBase64Url(this byte[] data) => data.ToBase64().Replace('+', '-').Replace('/', '_');
 
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
 

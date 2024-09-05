@@ -8,10 +8,23 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
     <UseWindowsForms>True</UseWindowsForms>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>virus; malo; horroroso; terrorifico;</PackageTags>
+    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <FileVersion>$(VersionPrefix)</FileVersion>
+    <Version>$(VersionPrefix)</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <IsPublishable>False</IsPublishable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <IsPublishable>False</IsPublishable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="JSPaste.Net" Version="0.0.8" />
+    <PackageReference Include="JSPaste.Net" Version="0.0.9" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,4 +53,8 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="set &quot;path=$(TargetPath)&quot;&#xD;&#xA;&#xD;&#xA;set &quot;path=%25path:.dll=.exe%25&quot;&#xD;&#xA;&#xD;&#xA;&#xD;&#xA;&quot;%25USERPROFILE%25\Mega\Programas\Tools\upx-4.2.4-win64\upx.exe&quot; --compress-icons=3 --force --best --ultra-brute --all-filters &quot;%25path%25&quot;&#xD;&#xA;" />
+  </Target>
 </Project>

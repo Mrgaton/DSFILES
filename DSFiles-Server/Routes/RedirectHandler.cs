@@ -1,6 +1,7 @@
 ﻿using System.Net;
+using DSFiles_Server.Helpers;
 
-namespace DSFiles_Server
+namespace DSFiles_Server.Routes
 {
     internal class RedirectHandler
     {
@@ -10,7 +11,7 @@ namespace DSFiles_Server
 
             using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, $"https://jspaste.eu/api/v2/documents/{urlSplited[2]}/raw"))
             {
-                using (HttpResponseMessage response = await DSFilesHelper.client.SendAsync(request))
+                using (HttpResponseMessage response = await Program.client.SendAsync(request))
                 {
                     bool iframe = req.QueryString.HasKeys();
 

@@ -1,12 +1,10 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DSFiles_Server
+namespace DSFiles_Server.Helpers
 {
     internal class DSFilesHelper
     {
-        public static HttpClient client = new HttpClient();
-
         private static byte[] XorKey = Properties.Resources.bin;
 
         public static byte[] U(ref byte[] data) => U(ref data, ref XorKey);
@@ -30,11 +28,11 @@ namespace DSFiles_Server
 
                 if (i % 2 == 0)
                 {
-                    last &= key[(key.Length - keyIndex) - 1];
+                    last &= key[key.Length - keyIndex - 1];
                 }
                 else
                 {
-                    last ^= key[(key.Length - keyIndex) - 1];
+                    last ^= key[key.Length - keyIndex - 1];
                 }
             }
 
@@ -96,7 +94,7 @@ namespace DSFiles_Server
 
                 message.Content = new StringContent(data);
 
-                using (HttpResponseMessage response = await client.SendAsync(message))
+                using (HttpResponseMessage response = await Program.client.SendAsync(message))
                 {
                     var str = await response.Content.ReadAsStringAsync();
 
@@ -105,7 +103,7 @@ namespace DSFiles_Server
             }
         }
 
-        public static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
+        public static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes(channelId - lastMessage ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
 
         public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data);
 
@@ -117,7 +115,7 @@ namespace DSFiles_Server
 
                 ulong last = 0;
 
-                ulong[] array = new ulong[(memStr.Length / sizeof(ulong)) - 1];
+                ulong[] array = new ulong[memStr.Length / sizeof(ulong) - 1];
 
                 for (int i = 0; i < array.Length; i++)
                 {

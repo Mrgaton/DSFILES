@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DSFiles_Client
+namespace DSFiles_Client.Utils
 {
     public sealed class WebHookHelper
     {
@@ -84,9 +84,9 @@ namespace DSFiles_Client
             }
         }
 
-        public async Task<HttpStatusCode> SendMessage(string content) => (await SendMessage(content, Application.ProductName));
+        public async Task<HttpStatusCode> SendMessage(string content) => await SendMessage(content, Application.ProductName);
 
-        public async Task<HttpStatusCode> SendMessage(string content, string username) => (await SendMessage(content, username, ""));
+        public async Task<HttpStatusCode> SendMessage(string content, string username) => await SendMessage(content, username, "");
 
         public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + JsonSerializer.Serialize(content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
 
@@ -103,7 +103,7 @@ namespace DSFiles_Client
                 retry:
                 Console.WriteLine("Removing message id: " + id);
 
-                var result = this.RemoveMessage(id).Result;
+                var result = RemoveMessage(id).Result;
 
                 if (result.Length > 0 && result.StartsWith('{') && result.EndsWith('}'))
                 {

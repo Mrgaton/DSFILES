@@ -1,10 +1,12 @@
 ﻿#define RANGE_FULLFILE
 
+using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
+using System.Linq;
 using System.Net;
 using System.Text;
 
-namespace DSFiles_Server
+namespace DSFiles_Server.Routes
 {
     internal class DSFilesHandle
     {
@@ -35,7 +37,7 @@ namespace DSFiles_Server
 
                 ulong channelId = BitConverter.ToUInt64(seed, 1);
                 ulong contentLength = BitConverter.ToUInt64(seed, 1 + sizeof(ulong));
-                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + (sizeof(ulong) * 2)).ToArray());
+                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + sizeof(ulong) * 2).ToArray());
 
                 int i = 0;
 
@@ -48,13 +50,13 @@ namespace DSFiles_Server
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
 
-                if ((req.Headers.Get("user-agent")).Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 2)
+                if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 2)
                 {
                     res.SendStatus(503);
                     return;
                 }
 
-                contentTypeProvider.TryGetContentType(fileName, out string? contentType);
+                contentTypeProvider.TryGetContentType(fileName.Replace("mkv","mp4",StringComparison.InvariantCultureIgnoreCase), out string? contentType);
 
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
                 res.AddHeader("Accept-Ranges", "bytes");
@@ -126,7 +128,7 @@ namespace DSFiles_Server
                     res.StatusCode = 206;
                     await res.OutputStream.FlushAsync();
 
-                    await SendFullFile(res, attachments.Skip(chunk).ToArray());
+                    await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk);
 #endif
                     return;
                 }
@@ -141,7 +143,7 @@ namespace DSFiles_Server
                     return;
                 }
 
-                await SendFullFile(res, attachments);
+                await SendFullFile(res, attachments,0);
             }
             catch (Exception ex)
             {
@@ -153,7 +155,7 @@ namespace DSFiles_Server
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments)
+        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments, int start)
         {
             int part = 0;
             int retry = 0;
@@ -173,7 +175,7 @@ namespace DSFiles_Server
 
                     try
                     {
-                        Console.WriteLine("Downloading id " + refreshedUrls[e - part] + " " + (e + 1) + "/" + attachments.Length);
+                        Console.WriteLine("Downloading id " + CleanUrl(refreshedUrls[e - part]) + " " + ((start + e + part) + 1) + "/" + attachments.Length);
 
                         dataPart = await client.GetByteArrayAsync(url);
                     }
@@ -205,6 +207,7 @@ namespace DSFiles_Server
                     var decoded = DSFilesHelper.U(ref dataPart);
 
                     res.OutputStream.Write([], 0, 0);
+
                     await res.OutputStream.WriteAsync(decoded, 0, dataPart.Length);
                 }
 
@@ -216,11 +219,11 @@ namespace DSFiles_Server
             res.Close();
         }
 
-        private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
+        /*private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
         {
             int retry = 0;
 
-            int part = (chunk / RefreshUrlsChunkSize) * RefreshUrlsChunkSize;
+            int part = chunk / RefreshUrlsChunkSize * RefreshUrlsChunkSize;
 
             string[] refreshedUrls = await DSFilesHelper.RefreshUrls(attachments.Skip(part).Take(attachments.Length - part > 0 ? RefreshUrlsChunkSize : part - attachments.Length).ToArray());
 
@@ -232,7 +235,7 @@ namespace DSFiles_Server
 
             try
             {
-                Console.WriteLine("Downloading chunk " + attachement + " " + (chunk + 1) + "/" + attachments.Length);
+                Console.WriteLine("Downloading chunk " + CleanUrl(attachement) + " " + (chunk + 1) + "/" + attachments.Length);
 
                 dataPart = await client.GetByteArrayAsync(attachement);
             }
@@ -261,6 +264,11 @@ namespace DSFiles_Server
             }
 
             res.Close();
+        }*/
+
+        private static string CleanUrl(string uri)
+        {
+            return uri.Split('/')[6].Split('?')[0];
         }
     }
 }

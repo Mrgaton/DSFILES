@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DSFiles_Client
+namespace DSFiles_Client.Helpers
 {
     internal class DSServerHelper
     {
@@ -27,10 +27,8 @@ namespace DSFiles_Client
                 {
                     string response = res.Content.ReadAsStringAsync().Result;
 
-#if DEBUG
-                    Console.WriteLine(response);
-                    Console.WriteLine();
-#endif
+                    await Program.DebugWriter.WriteLineAsync(response);
+                    await Program.DebugWriter.WriteLineAsync();
 
                     JsonNode json = JsonNode.Parse(response);
 
@@ -46,7 +44,7 @@ namespace DSFiles_Client
             {
                 req.Headers.TryAddWithoutValidation("Cookie", $"token={Program.API_TOKEN}");
 
-                using (var res = Program.client.SendAsync(req).Result)
+                using (var res = await Program.client.SendAsync(req))
                 {
                     Console.WriteLine(res.Content.ReadAsStringAsync().Result);
                 }

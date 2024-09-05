@@ -2,7 +2,7 @@
 using System.Net;
 using System.Text;
 
-namespace DSFiles_Server
+namespace DSFiles_Server.Helpers
 {
     public static class NameValueCollectionExtensions
     {
@@ -11,6 +11,21 @@ namespace DSFiles_Server
             var values = collection.GetValues(key);
 
             return values.FirstOrDefault();
+        }
+    }
+
+    public static class StreamExtensions
+    {
+        public static void Write(this Stream s, ref StringBuilder sb)
+        {
+            var data = Encoding.UTF8.GetBytes(sb.ToString());
+            s.Write(data, 0, data.Length);
+        }
+
+        public static void Write(this Stream s, string d)
+        {
+            var data = Encoding.UTF8.GetBytes(d);
+            s.Write(data, 0, data.Length);
         }
     }
 
@@ -26,7 +41,7 @@ namespace DSFiles_Server
                 return;
             }
 
-            Send(res, Encoding.UTF8.GetBytes(data));
+            res.Send(Encoding.UTF8.GetBytes(data));
         }
 
         public static void RedirectCatError(this HttpListenerResponse res, int status)
@@ -35,7 +50,7 @@ namespace DSFiles_Server
             res.Close();
         }
 
-        public static void Send(this HttpListenerResponse res, string data) => Send(res, Encoding.UTF8.GetBytes(data));
+        public static void Send(this HttpListenerResponse res, string data) => res.Send(Encoding.UTF8.GetBytes(data));
 
         public static void Send(this HttpListenerResponse res, byte[] data)
         {
@@ -45,8 +60,6 @@ namespace DSFiles_Server
                 res.OutputStream.Write(data, 0, data.Length);
             }
             catch { }
-
-            res.OutputStream.Close();
         }
     }
 }

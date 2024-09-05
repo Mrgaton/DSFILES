@@ -1,25 +1,51 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using System.Runtime.InteropServices;
+using DSFiles_Server.Helpers;
+using DSFiles_Server.Routes;
+using Microsoft.Win32;
 
 namespace DSFiles_Server
 {
     internal class Program
     {
+        public static HttpClient client = new HttpClient();
         private static void Main(string[] args)
         {
-            bool debug = Debugger.IsAttached;
-
-            if (!debug)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                SentrySdk.Init(o =>
+                try
                 {
-                    //o.AddAspNet();
-                    o.Dsn = "https://5a58b08aca581b0c7d6b0ef79aedd518@o4507580376219648.ingest.us.sentry.io/4507580379889664";
-                    o.Debug = false;
-                    o.TracesSampleRate = 1.0;
-                    o.AddEntityFramework();
-                });
+                    using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\HTTP\Parameters", true))
+                    {
+                        if (key == null)
+                        {
+                            Console.WriteLine("Failed to open registry key.");
+                            return;
+                        }
+
+                        key.SetValue("UrlSegmentMaxLength", ushort.MaxValue / 10, RegistryValueKind.DWord);
+                        //key.SetValue("MaxRequestBytes", 1048576, RegistryValueKind.DWord); // 1 MB
+
+                        Console.WriteLine("Registry updated successfully.");
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"An error occurred: {ex.Message}");
+                }
             }
+
+                bool debug = Debugger.IsAttached;
+
+            SentrySdk.Init(o =>
+            {
+                o.Dsn = "https://5a58b08aca581b0c7d6b0ef79aedd518@o4507580376219648.ingest.us.sentry.io/4507580379889664";
+                o.Debug = debug;
+                o.TracesSampleRate = 1.0;
+                o.AddEntityFramework();
+            });
 
             HttpListener listener = new HttpListener();
 
@@ -31,6 +57,7 @@ namespace DSFiles_Server
             while (true)
             {
                 HttpListenerContext context = listener.GetContext();
+                //HandleContext(context);
 
                 Task.Factory.StartNew(() => HandleContext(context));
             }
@@ -65,8 +92,26 @@ namespace DSFiles_Server
                         res.Close();
                         break;
 
+                    case "download":
+                        SpeedTest.HandleDownload(req, res);
+                        break;
+
+                    case "upload":
+                        SpeedTest.HandleUpload(req, res);
+                        break;
+
                     case "animate":
                         ConsoleAnimation.HandleAnimation(req, res);
+                        break;
+
+                    case "p":
+                        res.SendChunked = true;
+
+                        res.OutputStream.Write(ConsoleAnimation.ANSIHelper.HideScrollbar + "Holaaa que talleee  ee");
+                        res.OutputStream.Write("\nHAHHAHAhSA" + ConsoleAnimation.ANSIHelper.SetPosition(0,0 ));
+
+                        res.OutputStream.Write("\nHolaaa que tall " + ConsoleAnimation.ANSIHelper.ClearStartToLine + " eeee");
+                        res.OutputStream.Write("\nee");
                         break;
 
                     default:

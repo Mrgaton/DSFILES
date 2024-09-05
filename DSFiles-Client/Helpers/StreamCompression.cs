@@ -1,6 +1,6 @@
 ﻿using Microsoft.VisualBasic.Devices;
 
-namespace DSFiles
+namespace DSFiles_Client.Utils
 {
     internal class StreamCompression
     {
@@ -20,7 +20,7 @@ namespace DSFiles
 
         public static Stream GetCompressorStream(ulong fileLengh)
         {
-            if (fileLengh > int.MaxValue || fileLengh > AvailableMemory + (1000 * 1000 * 1000)) return tempCompressorStream;
+            if (fileLengh > int.MaxValue || fileLengh > AvailableMemory + 1000 * 1000 * 1000) return tempCompressorStream;
 
             return new MemoryStream();
         }
