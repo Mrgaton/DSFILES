@@ -669,7 +669,7 @@ namespace DSFiles
         {
             using (MemoryStream memStr = new MemoryStream(data))
             {
-                ulong deltaMin = memStr.ReadULong(false);
+                byte[] buffer = new byte[sizeof(ulong)];
 
                 ulong last = 0;
 
