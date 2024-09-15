@@ -1,4 +1,5 @@
 ﻿using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DSFiles_Server.Helpers
@@ -58,6 +59,13 @@ namespace DSFiles_Server.Helpers
         public static string ToBase64Url(this byte[] data) => data.ToBase64().Replace('+', '-').Replace('/', '_');
 
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
+
+        private static SHA1 hash = SHA1.Create();
+
+        public static byte[] Hash(this byte[] data)
+        {
+            return hash.ComputeHash(data);
+        }
 
         public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {

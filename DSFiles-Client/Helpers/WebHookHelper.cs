@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Client.Utils
 {
@@ -125,13 +126,49 @@ namespace DSFiles_Client.Utils
                 }
             }
         }
-
-        public async Task<string> PostFileToWebhook(byte[] data, string fileName)
+        public struct FileData
         {
-            MultipartFormDataContent form = new MultipartFormDataContent
+            public string FileName { get; set; }
+            public byte[] Data { get; set; }
+
+            public FileData(string fileName, byte[] data)
             {
-                { new ByteArrayContent(data, 0, data.Length), "0", fileName }
-            };
+                FileName = fileName;
+                Data = data;
+            }
+        }
+
+        //TODO: Esta mamada
+        public async Task<string> PostFileToWebhook(FileData[] files)
+        {
+            MultipartFormDataContent form = new MultipartFormDataContent();
+
+            int index = 0;
+
+            foreach (var file in files)
+            {
+                form.Add(new ByteArrayContent(file.Data, 0, file.Data.Length), index.ToString(), file.FileName);
+
+                index++;
+            }
+
+            using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
+            {
+                return await req.Content.ReadAsStringAsync();
+            }
+        }
+        public async Task<string> PostFileToWebhook(string[] fileNames, byte[][] filesData)
+        {
+            MultipartFormDataContent form = new MultipartFormDataContent();
+
+            for (int i = 0; i < fileNames.Length; i++)
+            {
+                var buffer = filesData[i];
+
+                if (buffer is null) continue;
+
+                form.Add(new ByteArrayContent(buffer, 0, buffer.Length), i.ToString(), fileNames[i]);
+            }
 
             using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
             {

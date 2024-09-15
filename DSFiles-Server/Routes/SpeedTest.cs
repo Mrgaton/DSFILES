@@ -1,5 +1,5 @@
-﻿using System.Net;
-using DSFiles_Server.Helpers;
+﻿using DSFiles_Server.Helpers;
+using System.Net;
 
 namespace DSFiles_Server.Routes
 {
@@ -15,7 +15,7 @@ namespace DSFiles_Server.Routes
         {
             if (RandomBuffer == null)
             {
-                RandomBuffer = new byte[32 * 1024 * 1024];
+                RandomBuffer = new byte[16 * 1024 * 1024];
                 random.NextBytes(RandomBuffer);
             }
 
@@ -34,7 +34,7 @@ namespace DSFiles_Server.Routes
 
         public static void HandleUpload(HttpListenerRequest req, HttpListenerResponse res)
         {
-            byte[] buffer = new byte[32 * 1024 * 1024];
+            byte[] buffer = new byte[8 * 1024 * 1024];
 
             int bytesRead = int.MaxValue;
 

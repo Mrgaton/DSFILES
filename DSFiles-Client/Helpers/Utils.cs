@@ -1,5 +1,6 @@
 ﻿using System.IO.Compression;
 using System.Text;
+using ZstdSharp;
 
 namespace DSFiles_Client.Utils
 {
@@ -58,6 +59,13 @@ namespace DSFiles_Client.Utils
         public static string ToBase64Url(this byte[] data) => data.ToBase64().Replace('+', '-').Replace('/', '_');
 
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
+
+        private static Compressor zstdEncode = new Compressor(Compressor.MaxCompressionLevel);
+        private static Decompressor zstdDecode = new Decompressor();
+
+        public static byte[] ZstdCompress(this byte[] data) => zstdEncode.Wrap(data).ToArray();
+
+        public static byte[] ZstdDecompress(this byte[] data) => zstdDecode.Unwrap(data).ToArray();
 
         public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {

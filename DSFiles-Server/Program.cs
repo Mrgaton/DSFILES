@@ -1,15 +1,16 @@
-﻿using System.Diagnostics;
-using System.Net;
-using System.Runtime.InteropServices;
-using DSFiles_Server.Helpers;
+﻿using DSFiles_Server.Helpers;
 using DSFiles_Server.Routes;
 using Microsoft.Win32;
+using System.Diagnostics;
+using System.Net;
+using System.Runtime.InteropServices;
 
 namespace DSFiles_Server
 {
     internal class Program
     {
         public static HttpClient client = new HttpClient();
+
         private static void Main(string[] args)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -29,7 +30,6 @@ namespace DSFiles_Server
 
                         Console.WriteLine("Registry updated successfully.");
                     }
-
                 }
                 catch (Exception ex)
                 {
@@ -37,7 +37,7 @@ namespace DSFiles_Server
                 }
             }
 
-                bool debug = Debugger.IsAttached;
+            bool debug = Debugger.IsAttached;
 
             SentrySdk.Init(o =>
             {
@@ -69,6 +69,8 @@ namespace DSFiles_Server
             HttpListenerResponse res = context.Response;
 
             res.SendChunked = false;
+
+            res.Headers.Set(HttpResponseHeader.Server, "DSFILES");
 
             Console.WriteLine($"[{DateTime.Now}] {req.Url.PathAndQuery}");
 
@@ -108,11 +110,15 @@ namespace DSFiles_Server
                         res.SendChunked = true;
 
                         res.OutputStream.Write(ConsoleAnimation.ANSIHelper.HideScrollbar + "Holaaa que talleee  ee");
-                        res.OutputStream.Write("\nHAHHAHAhSA" + ConsoleAnimation.ANSIHelper.SetPosition(0,0 ));
+                        res.OutputStream.Write("\nHAHHAHAhSA" + ConsoleAnimation.ANSIHelper.SetPosition(0, 0));
 
                         res.OutputStream.Write("\nHolaaa que tall " + ConsoleAnimation.ANSIHelper.ClearStartToLine + " eeee");
                         res.OutputStream.Write("\nee");
                         break;
+
+                    case "favicon.ico":
+                        res.SendStatus(404);
+                        return;
 
                     default:
                         res.RedirectCatError(404);

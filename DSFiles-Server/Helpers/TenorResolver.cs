@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 
 namespace DSFiles_Server.Helpers
 {
@@ -31,7 +27,7 @@ namespace DSFiles_Server.Helpers
             return null;
         }
 
-        private static string[] ReadUltil(string data,params char[] chars)
+        private static string[] ReadUltil(string data, params char[] chars)
         {
             List<string> result = new List<string>();
             StringBuilder sb = new StringBuilder();
@@ -42,7 +38,7 @@ namespace DSFiles_Server.Helpers
 
             foreach (var t in chars)
             {
-                for (i = i;  i < data.Length; i++)
+                for (i = i; i < data.Length; i++)
                 {
                     char c = splited[i];
 
@@ -52,7 +48,7 @@ namespace DSFiles_Server.Helpers
                         sb.Clear();
                         break;
                     }
-                       
+
                     sb.Append(c);
                 }
 

@@ -1,5 +1,4 @@
 ﻿using DSFiles_Client;
-using DSFiles_Client.Properties;
 using DSFiles_Client.Utils;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -10,9 +9,7 @@ namespace DSFiles
 {
     public static class DiscordFilesSpliter
     {
-        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(Program.UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)); }
-
-        private static byte[] XorKey = Resources.bin;
+        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(Program.UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)) { AutoFlush = true }; }
 
         /*public static IEnumerable<byte[]> SplitByLength(byte[] bytes, int maxLength)
         {
@@ -22,7 +19,8 @@ namespace DSFiles
             }
         }*/
 
-        private const long amountPerFile = (25 * 1024 * 1024) - 256;
+        //private const long amountPerFile = (25 * 1024 * 1024) - 256;
+        private const long amountPerFile = (1 * 1024 * 1024) - 256;
 
         private const int MaxTimeListBuffer = 10;
 
@@ -50,6 +48,8 @@ namespace DSFiles
         }
 
         private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avi", ".png", ".jpg", ".iso"];
+
+        public static string EncodeAttachementName(ulong channelId, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
 
         public static CompressionLevel ShouldCompress(string? ext, long filesize, bool askToNotCompress = true)
         {
@@ -118,38 +118,6 @@ namespace DSFiles
             return response;
         }
 
-        /*private static async Task<MemoryStream> TempolarStream(dynamic memStream, bool compress)
-        {
-            if (!compress) return memStream;
-
-            using (MemoryStream tempStream = new MemoryStream())
-            {
-                using (DeflateStream dstream = new DeflateStream(tempStream, CompressionLevel.Optimal))
-                {
-                    memStream.Position = 0;
-
-                    await memStream.CopyToAsync(dstream);
-                }
-
-                return new MemoryStream(tempStream.ToArray());
-            }
-        }
-
-        private static async Task<FileStream> TempolarStream(FileStream stream, string filePath, bool compress)
-        {
-            if (!compress) return stream;
-
-            using (FileStream tempStream = File.Open(filePath, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
-            {
-                using (DeflateStream dstream = new DeflateStream(tempStream, CompressionLevel.Optimal))
-                {
-                    await stream.CopyToAsync(dstream);
-                }
-            }
-
-            return File.Open(filePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        }*/
-
         /// <summary>
         /// Encode part
         /// </summary>
@@ -158,52 +126,43 @@ namespace DSFiles
         /// <param name="buffer"></param>
         /// <param name="compress"></param>
         /// <returns></returns>
-        public static async Task<(byte[] seed, byte[] secret, ulong size)> Encode(WebHookHelper webHook, string filePath, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
-        {
-            using (FileStream stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            {
-                return await EncodeCore(webHook, stream, compressionLevel);
-            }
-        }
 
-        public static async Task<(byte[] seed, byte[] secret, ulong size)> Encode(WebHookHelper webHook, Stream fstream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<(byte[] seed, byte[] secret, ulong size)> Encode(WebHookHelper webHook, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
-            using (var stream = fstream)
-            {
-                return await EncodeCore(webHook, stream, compressionLevel);
-            }
+            return await EncodeCore(webHook, stream, compressionLevel);
         }
 
         private static Stopwatch sw = new Stopwatch();
 
-        public static async Task<(byte[] seed, byte[] secret, ulong size)> EncodeCore(WebHookHelper webHook, Stream dataStream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<(byte[] seed, byte[] secret, ulong size)> EncodeCore(WebHookHelper webHook, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
             ulong encodedSize = 0;
 
             bool compress = compressionLevel != CompressionLevel.NoCompression;
 
-            Stream tempCompressorStream = compress ? StreamCompression.GetCompressorStream((ulong)dataStream.Length) : null;
+            Stream uploadStream = compress ? StreamCompression.GetCompressorStream((ulong)stream.Length) : stream;
 
             if (compress)
             {
                 Console.WriteLine("Compressing file please wait");
 
-                long originalFileSize = dataStream.Length;
+                long originalFileSize = stream.Length;
 
-                long totalRead = 0L;
-                byte[] buffer = new byte[Math.Max(originalFileSize / (100 * 8), 1)]; // 80 KB buffer
-                int bytesRead;
-
-                int consoleTop = Console.CursorTop - 1;
-
-                using (var compStream = new BrotliStream(tempCompressorStream, compressionLevel, true))
+                using (var compStream = new BrotliStream(uploadStream, compressionLevel, true))
                 {
-                    while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                    int bytesRead;
+                    long totalRead = 0;
+
+                    byte[] buffer = new byte[Math.Max(originalFileSize / (100 * 8), 1)];
+
+                    int consoleTop = Console.CursorTop - 1;
+
+                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) != 0)
                     {
                         await compStream.WriteAsync(buffer, 0, bytesRead);
                         totalRead += bytesRead;
 
-                        double percentage = (double)totalRead / dataStream.Length * 100;
+                        double percentage = (double)totalRead / stream.Length * 100;
                         string line = $"Compressing file please wait: {percentage.ToString(DecimalMask)}%";
 
                         Console.SetCursorPosition(0, consoleTop);
@@ -214,75 +173,96 @@ namespace DSFiles
                     await compStream.FlushAsync();
                 }
 
-                await dataStream.DisposeAsync();
-                dataStream = tempCompressorStream;
-                long compressedSize = dataStream.Length;
-                Console.WriteLine("File compressed " + Math.Round(((compressedSize / (double)originalFileSize) * 100), 3) + "% compress ratio new size " + ByteSizeToString(compressedSize));
+                await stream.DisposeAsync();
+
+                long compressedSize = uploadStream.Length;
+                Console.WriteLine("File compressed " + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + "% compress ratio new size " + ByteSizeToString(compressedSize));
                 Console.WriteLine();
 
-                dataStream.Position = 0;
+                uploadStream.Position = 0;
             }
 
             using (MemoryStream seedData = new MemoryStream())
             {
-                seedData.WriteByte(compress ? (byte)255 : (byte)0);
-                await seedData.WriteAsync(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
-                await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
+                ByteConfig config = new ByteConfig() { Compression = compress };
 
-                int messagesToSend = (int)((ulong)dataStream.Length / amountPerFile) + 1, messagesSended = 0;
+                seedData.WriteByte(config.ToByte());
+
+                await seedData.WriteAsync(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
+
+                //await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
+
+                int messagesToSend = (int)((ulong)uploadStream.Length / amountPerFile) + 1, messagesSended = 0;
 
                 ulong[] attachementsIdsList = new ulong[messagesToSend];
-                ulong[] messagesIdsList = new ulong[messagesToSend];
+                List<ulong> messagesIdsList = [];
 
-                using (var tempIdsWriter = UnsendedIdsWriter)
+                using StreamWriter tempIdsWriter = UnsendedIdsWriter;
+
+                long totalWrited = 0;
+
+                int chunksPerIteration = 2;
+
+                Console.WriteLine("Starting upload of " + messagesToSend + " chunks (" + ByteSizeToString(uploadStream.Length) + ')');
+                Console.WriteLine();
+
+                using (TransformStream ts = new TransformStream(uploadStream))
                 {
-                    ulong lastAttachementId = int.MaxValue;
-
-                    long totalWrited = 0;
-
-                    Console.WriteLine("Starting upload of " + messagesToSend + " chunks (" + ByteSizeToString(dataStream.Length) + ')');
-                    Console.WriteLine();
-
-                    for (int i = 1; i - 1 < messagesToSend; i++)
+                    for (int i = 1; i - 1 < messagesToSend; i += chunksPerIteration)
                     {
                         sw.Restart();
 
-                        byte[] buffer = new byte[amountPerFile * i > dataStream.Length ? (dataStream.Length - (amountPerFile * (i - 1))) : amountPerFile];
+                        int chunks = Math.Min((i - 1) + chunksPerIteration, messagesToSend);
 
-                        await dataStream.ReadAsync(buffer, 0, buffer.Length);
+                        byte[][] buffers = new byte[chunks][];
+                        string[] attachementsNames = new string[chunks]; 
 
-                        messagesSended++;
+                        for (int j = 0; j < chunks; j++)
+                        {
+                            if (i + j > messagesToSend) break;
 
-                        totalWrited += buffer.LongLength;
+                            byte[] buffer = new byte[amountPerFile * i > ts.Length ? (ts.Length - (amountPerFile * (i - 1))) : amountPerFile];
+                            await ts.ReadAsync(buffer, 0, buffer.Length);
+                            buffers[j] = buffer;
 
+                            attachementsNames[j] = EncodeAttachementName(webHook.channelId, i + j, messagesToSend);
+                        }
+ 
                     encodeRetry:
 
                         JsonNode? response = null;
 
                         try
                         {
-                            string attachementName = EncodeAttachementName(webHook.channelId, lastAttachementId, i, messagesToSend);
+                            response = JsonNode.Parse(await webHook.PostFileToWebhook(attachementsNames,buffers));
 
-                            response = JsonNode.Parse(await webHook.PostFileToWebhook(D(buffer, XorKey), attachementName));
+                            ulong[] attachementsId = new ulong[chunks];
 
-                            ulong attachementId = lastAttachementId = ulong.Parse((string)response["attachments"][0]["id"]);
+                            for (int j = 0; j < attachementsId.Length; j++)
+                            {
+                                attachementsId[j] = ulong.Parse((string)response["attachments"][j]["id"]);
+
+                                attachementsIdsList[i - 1 + j] = attachementsId[j];
+                            }
+
                             ulong messageId = ulong.Parse((string)response["id"]);
 
-                            if (attachementId <= 0 || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
+                            if (attachementsId.Any(id => id <= 0) || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
 
                             await tempIdsWriter.WriteLineAsync(messageId.ToString());
                             await tempIdsWriter.FlushAsync();
 
-                            attachementsIdsList[i - 1] = attachementId;
-                            messagesIdsList[i - 1] = messageId;
+                            messagesIdsList.Add(messageId);
                         }
                         catch (Exception ex)
                         {
                             Program.WriteException(ref ex, response.ToString());
                             Thread.Sleep(new Random().Next(0, 1000));
-
                             goto encodeRetry;
                         }
+
+                        messagesSended += chunks;
+                        totalWrited += buffers.Sum(e => e.LongLength);
 
                         timeList.Add(sw.ElapsedMilliseconds);
                         if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
@@ -293,23 +273,25 @@ namespace DSFiles
 
                         if (messagesSended == messagesToSend) break;
 
-                        // Console.WriteLine(sw.ElapsedMilliseconds);git config --global user.email "your new email"
-
-                        // Console.WriteLine("Sleeping to " + (sw.ElapsedMilliseconds > 2000 ? 0 : 2000 - (int)sw.ElapsedMilliseconds));
-
-                        Thread.Sleep(sw.ElapsedMilliseconds > 2000 ? 0 : 2000 - (int)sw.ElapsedMilliseconds);
+                        if (sw.ElapsedMilliseconds < 2000) Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     }
-
-                    sw.Stop();
-
-                    tempIdsWriter.BaseStream.SetLength(0);
                 }
+
+                sw.Stop();
+
+                tempIdsWriter.BaseStream.SetLength(0);
 
                 Console.WriteLine();
 
-                WriteBuffer(CompressArray(attachementsIdsList), seedData);
+                await seedData.WriteAsync(CompressArray(attachementsIdsList));
 
-                return (seedData.ToArray().Deflate(), CompressArray(messagesIdsList).Deflate(), encodedSize);
+                try
+                {
+                    File.WriteAllBytes("seeds\\" + Directory.EnumerateFiles("seeds\\").Count(), seedData.ToArray());
+                }
+                catch { }
+
+                return (seedData.ToArray().Deflate(), CompressArray(messagesIdsList.ToArray()).Deflate(), encodedSize);
             }
         }
 
@@ -321,28 +303,6 @@ namespace DSFiles
         /// <returns></returns>
         public const int RefreshUrlsChunkSize = 50;
 
-        public static async Task Decode(string seed, string filePath) => await Decode(seed.FromBase64Url(), filePath);
-
-        public static async Task Decode(byte[] seed, string filePath)
-        {
-            using (FileStream stream = File.Open(filePath, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
-            {
-                await DecodeCore(seed, stream);
-            }
-        }
-
-        public static async Task<byte[]> Decode(string seed) => await Decode(seed.FromBase64Url());
-
-        public static async Task<byte[]> Decode(byte[] seed)
-        {
-            using (MemoryStream memStream = new MemoryStream())
-            {
-                await DecodeCore(seed, memStream);
-
-                return memStream.ToArray();
-            }
-        }
-
         public static async Task Decode(byte[] seed, Stream stream) => await DecodeCore(seed, stream);
 
         public static async Task Decode(string seed, Stream stream) => await DecodeCore(seed.FromBase64Url(), stream);
@@ -351,23 +311,21 @@ namespace DSFiles
         {
             using (MemoryStream seedData = new MemoryStream(seed.Inflate()))
             {
-                bool compressed = seedData.ReadByte() == 255;
-
-                Stream? originalStream = compressed ? stream : null;
+                ByteConfig config = new ByteConfig((byte)seedData.ReadByte());
 
                 ulong channelId = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
-                ulong contentLength = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
 
-                ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - (sizeof(ulong) * 2) - sizeof(bool)));
+                //ulong contentLength = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
+
+                ulong[] attachementsId = DecompressArray(seedData.ReadAmout(seedData.Length - (sizeof(ulong) * 1) - sizeof(bool)));
 
                 int attachements = attachementsId.Length;
 
                 long aproxSize = attachements * amountPerFile;
 
-                if (compressed) stream = StreamCompression.GetCompressorStream((ulong)(aproxSize) * 2);
+                Stream? outputStream = config.Compression ? StreamCompression.GetCompressorStream((ulong)(aproxSize) * 2) : stream;
 
-                Console.WriteLine("Downloading file max size " + ByteSizeToString(aproxSize));
-                //IDsArrayCompressor.Decompress(seed.Skip(sizeof(ulong)).Take(seed.Length - sizeof(ulong)).ToArray()).ToArray();
+                Console.WriteLine("Downloading aprox max size " + ByteSizeToString(aproxSize) + '\n');
 
                 string[] attachementsUrls = new string[attachementsId.Length];
 
@@ -375,106 +333,87 @@ namespace DSFiles
                 {
                     ulong id = attachementsId[i];
 
-                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i > 0 ? attachementsId[i - 1] : int.MaxValue, i + 1, attachements)}";
+                    attachementsUrls[i] = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, i + 1, attachements)}";
                 }
-
-                int part = 0;
-
-                long downloaded = 0;
 
                 sw.Start();
 
                 using (HttpClient tempClient = new HttpClient())
                 {
-                    while (part < attachementsUrls.Length)
+                    int part = 0;
+
+                    long downloaded = 0;
+
+                    using (TransformStream ts = new TransformStream(outputStream))
                     {
-                        string[] refreshedUrls = await RefreshUrls(attachementsUrls.Skip(part).Take(attachementsUrls.Length - part > 0 ? RefreshUrlsChunkSize : part - attachementsUrls.Length).ToArray());
-
-                        byte[] dataPart;
-
-                        for (int e = part; e < part + RefreshUrlsChunkSize && e < attachementsUrls.Length; e++)
+                        while (part < attachementsUrls.Length)
                         {
-                            sw.Restart();
+                            string[] refreshedUrls = await RefreshUrls(attachementsUrls.Skip(part).Take(attachementsUrls.Length - part > 0 ? RefreshUrlsChunkSize : part - attachementsUrls.Length).ToArray());
 
-                            string url = refreshedUrls[e - part];
-
-                        rety:
-
-                            dataPart = null;
-
-                            try
+                            for (int e = part; e < part + RefreshUrlsChunkSize && e < attachementsUrls.Length; e++)
                             {
-                                Console.Write("Downloading id " + attachementsId[e] + " " + (e + 1) + "/" + attachements);
+                                sw.Restart();
 
-                                dataPart = await tempClient.GetByteArrayAsync(url);
+                                string url = refreshedUrls[e - part];
+
+                                byte[] chunk = null;
+
+                            rety:
+                                try
+                                {
+                                    Console.Write("Downloading id " + attachementsId[e] + " " + (e + 1) + "/" + attachements);
+
+                                    chunk = await tempClient.GetByteArrayAsync(url);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Program.WriteException(ref ex);
+
+                                    goto rety;
+                                }
+
+                                await ts.WriteAsync(chunk);
+                                downloaded += chunk.Length;
+
+                                timeList.Add(sw.ElapsedMilliseconds);
+                                if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
+                                long average = (timeList.Sum() / timeList.Count);
+                                long totalTime = (attachements - e) * average;
+
+                                Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
+
+                                //var decoded = dataPart;// U(dataPart, XorKey);
+                                //await stream.WriteAsync(decoded, 0, dataPart.Length);
                             }
-                            catch (Exception ex)
-                            {
-                                Program.WriteException(ref ex);
 
-                                goto rety;
-                            }
+                            await stream.FlushAsync();
 
-                            timeList.Add(sw.ElapsedMilliseconds);
-                            if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
-                            long average = (timeList.Sum() / timeList.Count);
-                            long totalTime = (attachements - e) * average;
-
-                            downloaded += dataPart.Length;
-
-                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
-
-                            var decoded = U(dataPart, XorKey);
-
-                            await stream.WriteAsync(decoded, 0, dataPart.Length);
+                            part += RefreshUrlsChunkSize;
                         }
 
-                        await stream.FlushAsync();
+                        Console.WriteLine();
 
-                        part += RefreshUrlsChunkSize;
-                    }
-
-                    if (compressed)
-                    {
-                        stream.Position = 0;
-
-                        using (var brstream = new BrotliStream(stream, CompressionMode.Decompress))
+                        if (config.Compression)
                         {
-                            await brstream.CopyToAsync(originalStream);
+                            Console.WriteLine($"Decompressing {ByteSizeToString(outputStream.Length)} file");
+
+                            outputStream.Position = 0;
+
+                            using (var brstream = new BrotliStream(outputStream, CompressionMode.Decompress))
+                            {
+                                await brstream.CopyToAsync(stream);
+                            }
                         }
-                    }
 
-                    //using (DeflateStream dstream = new DeflateStream(stream, CompressionMode.Decompress))
-                    //{
-                    for (int i = 0; i < attachements; i++)
-                    {
-                    }
-                    //}
+                        await outputStream.DisposeAsync();
 
-                    Console.WriteLine();
-                    Console.WriteLine("File downloaded");
+                        Console.WriteLine("File downloaded");
+                    }
                 }
 
                 sw.Stop();
             }
         }
-
-        /* private static async Task<dynamic> DecompressStream(dynamic tempStream, dynamic destStream)
-         {
-             using (DeflateStream dstream = new DeflateStream(tempStream, CompressionMode.Decompress))
-             {
-                 await dstream.CopyToAsync(destStream);
-             }
-
-             await destStream.FlushAsync();
-
-             return destStream;
-         }*/
-
-        //private static Regex alphanumericRegex = new Regex("[^a-zA-Z0-9 -]");
-        public static string EncodeAttachementName(ulong channelId, ulong lastMessage, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId - lastMessage) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
-
-        public static void WriteBuffer(byte[] buffer, dynamic Str) => Str.Write(buffer, 0, buffer.Length);
 
         /*public static class IDsArrayCompressor
         {
@@ -622,6 +561,21 @@ namespace DSFiles
 
         public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data);
 
+        /*private static ulong GetDeltaMin(ulong[] nums)
+        {
+            if (nums.Length < 2) return 0;
+
+            ulong min = ulong.MaxValue;
+
+            for (int i = 1; i < nums.Length; i++)
+            {
+                ulong diff = nums[i] - nums[i - 1];
+                if (diff < min) min = diff;
+            }
+
+            return min;
+        }*/
+
         private static ulong GetDeltaMin(ulong[] nums)
         {
             ulong[] diff = new ulong[nums.Length - 1];
@@ -648,17 +602,28 @@ namespace DSFiles
             {
                 memStr.Write(BitConverter.GetBytes(deltaMin));
 
+                ulong[] encoded = new ulong[nums.Length];
+
                 for (int i = 0; i < nums.Length; i++)
                 {
                     ulong n = nums[i];
 
-                    var bytes = BitConverter.GetBytes(n - last - deltaMin);
+                    encoded[i] = n - last;
+
+                    if (i != nums.Length - 1) encoded[i] -= deltaMin;
+
+                    last = n;
+                }
+
+                for (int i = 0; i < nums.Length; i++)
+                {
+                    ulong num = encoded[i];
+
+                    var bytes = BitConverter.GetBytes((long)num);
 
                     if (i % 2 == 0) Array.Reverse(bytes);
 
                     memStr.Write(bytes);
-
-                    last = n;
                 }
 
                 return memStr.ToArray();
@@ -669,7 +634,7 @@ namespace DSFiles
         {
             using (MemoryStream memStr = new MemoryStream(data))
             {
-                byte[] buffer = new byte[sizeof(ulong)];
+                ulong deltaMin = memStr.ReadULong(false);
 
                 ulong last = 0;
 
@@ -678,7 +643,10 @@ namespace DSFiles
                 for (int i = 0; i < array.Length; i++)
                 {
                     ulong num = memStr.ReadULong(i % 2 == 0);
-                    array[i] = num + last + deltaMin;
+
+                    array[i] = num + last;
+
+                    if (i != array.Length - 1) array[i] += deltaMin;
 
                     last = array[i];
                 }
@@ -707,63 +675,31 @@ namespace DSFiles
             else return size + "B";
         }
 
-        public static byte[] D(byte[] data, byte[] key)
+        private sealed class ByteConfig
         {
-            byte[] result = new byte[data.Length];
+            public bool Compression { get; set; }
+            public int VersionNumber { get; set; } = 1;
 
-            int max = data.Length - 1;
-            byte last = (byte)(data.Length % byte.MaxValue);
+            public ByteConfig()
+            { }
 
-            for (int i = 0; i < data.Length; i++)
+            public ByteConfig(byte header)
             {
-                int keyIndex = i % key.Length;
+                this.Compression = (header & 0b10000000) != 0;
+                this.VersionNumber = header & 0b00001111;
 
-                result[i] = (byte)(data[max - i] ^ key[keyIndex]);
-                result[i] += last;
-
-                last += data[max - i];
-
-                if (i % 2 == 0)
-                {
-                    last &= key[(key.Length - keyIndex) - 1];
-                }
-                else
-                {
-                    last ^= key[(key.Length - keyIndex) - 1];
-                }
+                if (VersionNumber == 0 || VersionNumber == 15) throw new ArgumentException("Byte header has been made with an unsuported byte");
             }
 
-            return result;
-        }
-
-        public static byte[] U(byte[] data, byte[] key)
-        {
-            byte[] result = new byte[data.Length];
-            int max = data.Length - 1;
-            byte last = (byte)(data.Length % byte.MaxValue);
-
-            for (int i = 0; i < data.Length; i++)
+            public byte ToByte()
             {
-                int keyIndex = i % key.Length;
+                byte result = 0;
 
-                data[i] -= last;
+                if (Compression) result |= 0b10000000;
 
-                byte b = (byte)(data[i] ^ key[keyIndex]);
-
-                result[max - i] = b;
-                last += b;
-
-                if (i % 2 == 0)
-                {
-                    last &= key[(key.Length - keyIndex) - 1];
-                }
-                else
-                {
-                    last ^= key[(key.Length - keyIndex) - 1];
-                }
+                result |= (byte)(VersionNumber & 0b00001111);
+                return result;
             }
-
-            return result;
         }
     }
 }

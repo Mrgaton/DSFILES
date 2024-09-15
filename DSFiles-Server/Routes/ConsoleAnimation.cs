@@ -1,7 +1,6 @@
 ﻿using DSFiles_Server.Helpers;
 using SkiaSharp;
 using System.Diagnostics;
-using System.Drawing;
 using System.Net;
 using System.Text;
 
@@ -16,7 +15,7 @@ namespace DSFiles_Server.Routes
 
         private static int blankBrightNess = maxBrightness / charSet.Length * colorLessMinCharSetLengh;
 
-        private class ConversorConfig
+        private sealed class ConversorConfig
         {
             public int Width { get; set; }
             public int Height { get; set; }
@@ -59,7 +58,7 @@ namespace DSFiles_Server.Routes
                 return;
             }
 
-            if (url.Contains("://tenor.com",StringComparison.InvariantCultureIgnoreCase))
+            if (url.Contains("://tenor.com", StringComparison.InvariantCultureIgnoreCase))
             {
                 url = TenorResolver.Resovlve(url);
             }
@@ -91,7 +90,7 @@ namespace DSFiles_Server.Routes
                     FpsDivisor = Math.Max(1, int.Parse(req.QueryString["fps"] ?? req.QueryString["fd"] ?? req.QueryString["f"] ?? "1")),
                     WidthDivisor = Math.Max(1, int.Parse(req.QueryString["wd"] ?? req.QueryString["w"] ?? "1")),
                     HeightDivisor = Math.Max(1, int.Parse(req.QueryString["hd"] ?? req.QueryString["h"] ?? "1") * 2),
-                    MinColorChangeNeeded = Math.Max(1, int.Parse(req.QueryString["mccn"]?? req.QueryString["compression"] ?? req.QueryString["c"] ?? req.QueryString["comp"] ?? "75"))
+                    MinColorChangeNeeded = Math.Max(1, int.Parse(req.QueryString["mccn"] ?? req.QueryString["compression"] ?? req.QueryString["c"] ?? req.QueryString["comp"] ?? "75"))
                 };
 
                 StringBuilder sb = new StringBuilder();
@@ -168,7 +167,6 @@ namespace DSFiles_Server.Routes
 
                         RenderFrame(ref bytes, ref sb, config);
                         framesBuffer.Add(0, sb.ToString());
-
                     }
                 }
             }
@@ -187,7 +185,7 @@ namespace DSFiles_Server.Routes
 
                     if (framesBuffer.Count == 1)
                     {
-                        while(true)
+                        while (true)
                         {
                             res.OutputStream.Write(ANSIHelper.SetPosition(0, 0));
 
@@ -248,7 +246,7 @@ namespace DSFiles_Server.Routes
 
                     int colorDiff = Math.Abs(r - lastR) + Math.Abs(g - lastG) + Math.Abs(b - lastB);
 
-                    if ((config.Pixel || brightness > blankBrightNess) && colorDiff > config.MinColorChangeNeeded || ((r + g + b == 0)  && lastR + lastG + lastB > 0)) //Dont change the color if its too similar to the current one
+                    if ((config.Pixel || brightness > blankBrightNess) && colorDiff > config.MinColorChangeNeeded || ((r + g + b == 0) && lastR + lastG + lastB > 0)) //Dont change the color if its too similar to the current one
                     {
                         if (config.HDR)
                         {
@@ -323,24 +321,29 @@ namespace DSFiles_Server.Routes
 
             public static string ClearScreen => "\u001b[2J";
             public static string ClearCursorToEnd => "\u001b[0J";
-            public static string ClearCursorToBeginning=> "\u001b[1J";
-            public static string ClearLineToEnd=> "\u001b[0K";
-            public static string ClearStartToLine=> "\u001b[1K";
+            public static string ClearCursorToBeginning => "\u001b[1J";
+            public static string ClearLineToEnd => "\u001b[0K";
+            public static string ClearStartToLine => "\u001b[1K";
             public static string ClearLine => "\u001b[2K";
 
             public static string MoveCursorUp(int n) => $"\u001b[{n}A";
+
             public static string MoveCursorDown(int n) => $"\u001b[{n}B";
+
             public static string MoveCursorForward(int n) => $"\u001b[{n}C";
+
             public static string MoveCursorBackward(int n) => $"\u001b[{n}D";
+
             public static string MoveCursorToPosition(int row, int col) => $"\u001b[{row};{col}H";
 
             public static string SaveCursorPosition => "\u001b[s";
             public static string RestoreCursorPosition => "\u001b[u";
 
             public static string ScrollUp(int n) => $"\u001b[{n}S";
+
             public static string ScrollDown(int n) => $"\u001b[{n}T";
 
-            public static string SetTitle(string title) => "\u001b]0;" +title  + "\a";
+            public static string SetTitle(string title) => "\u001b]0;" + title + "\a";
 
             public static string SetWindowSize(int x, int y) => "\u001b[8;" + y + ";" + x + "t";
 
@@ -348,10 +351,10 @@ namespace DSFiles_Server.Routes
 
             //private static string Pastel(string text, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + text;
             public static string FRGB(char c, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + c;
+
             public static string BRGB(char c, int r, int g, int b) => "\u001b[48;2;" + r + ";" + g + ";" + b + "m" + c;
 
             public static string SetPosition(int row, int collum) => "\u001b[" + row + ";" + collum + "H";
-        
         }
     }
 }
