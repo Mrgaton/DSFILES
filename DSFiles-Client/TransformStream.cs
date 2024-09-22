@@ -40,18 +40,9 @@ namespace DSFiles_Client
             _baseStream.SetLength(value);
         }
 
-        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count).Result;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotImplementedException();
 
-        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count)
-        {
-            int result = await _baseStream.ReadAsync(buffer, offset, count);
-
-            this.Position += count + offset;
-
-            D(ref buffer, (int)this.Position);
-
-            return result;
-        }
+        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count) => throw new NotImplementedException();
 
         public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
@@ -68,7 +59,7 @@ namespace DSFiles_Client
         {
             for (int i = 0; i < data.Length; i++)
             {
-                int relativeIndex = (position - data.Length) + i;
+                int relativeIndex = (position ) + i;
 
                 int keyIndex = (relativeIndex % Key.Length);
 

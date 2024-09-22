@@ -4,6 +4,7 @@ using DSFiles_Client;
 using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 
@@ -11,11 +12,21 @@ namespace DSFiles_Server.Routes
 {
     internal class DSFilesHandle
     {
-        private static HttpClient client = new HttpClient();
+        private static HttpClient client = new HttpClient(new HttpClientHandler()
+        {
+            CookieContainer = new CookieContainer(),
+            AllowAutoRedirect = false,
+            SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
+            MaxConnectionsPerServer = short.MaxValue,
+
+        })
+        {
+            DefaultRequestVersion = HttpVersion.Version30,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
+        };
+
         private static FileExtensionContentTypeProvider contentTypeProvider = new FileExtensionContentTypeProvider();
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
-
-        private static Dictionary<byte[], long> ContentLenghCache = [];
 
         public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
         {
@@ -36,7 +47,9 @@ namespace DSFiles_Server.Routes
 
                 byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
 
-                var etag = seed.Hash();
+                uint relativeLength = BitConverter.ToUInt32(seed, 1);
+
+                //var etag = seed.Hash();
 
                 ByteConfig config;
 
@@ -60,11 +73,11 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                ulong channelId = BitConverter.ToUInt64(seed, 1);
+                ulong channelId = BitConverter.ToUInt64(seed, 1 + sizeof(uint));
 
-                //ulong contentLength = BitConverter.ToUInt64(seed, 1 + sizeof(ulong));
+                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + sizeof(uint) + sizeof(ulong)).ToArray());
 
-                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + sizeof(ulong) * 1).ToArray());
+                long contentLength = ((ids.Length - 1) * CHUNK_SIZE) + relativeLength;
 
                 int i = 0;
 
@@ -76,7 +89,7 @@ namespace DSFiles_Server.Routes
                 }).ToArray();
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
-
+ 
                 if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 3)
                 {
                     res.SendStatus(503);
@@ -87,7 +100,7 @@ namespace DSFiles_Server.Routes
 
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
                 res.AddHeader("Accept-Ranges", "bytes");
-                res.AddHeader("ETAG", etag.ToBase64Url());
+                //res.AddHeader("ETAG", etag.ToBase64Url());
 
                 if (ids.Length > 3)
                 {
@@ -98,20 +111,11 @@ namespace DSFiles_Server.Routes
                     res.AddHeader("Cache-Control", "public, max-age=31536000");
                 }
 
-                if (config.Compression)
-                {
-                    res.AddHeader("content-encoding", "br");
-                }
+                if (config.Compression) res.AddHeader("content-encoding", "br");
 
-                if (fullFile)
-                {
-                    res.AddHeader("Content-Disposition", $"attachment; filename=\"{fileName}\"");
-                }
+                if (fullFile) res.AddHeader("Content-Disposition", $"attachment; filename=\"{fileName}\"");
 
                 if (!fullFile) res.Headers.Set(HttpResponseHeader.AcceptRanges, "bytes");
-
-                //res.Headers.Set(HttpResponseHeader.Connection, "keep-alive");
-                //res.KeepAlive = true;
 
                 string range = req.Headers.Get("range");
 
@@ -123,15 +127,6 @@ namespace DSFiles_Server.Routes
                 }
                 res.Headers.Add("cosa", Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString())));*/
 
-                if (!ContentLenghCache.TryGetValue(etag, out long contentLength))
-                {
-                    var response = client.Send(new HttpRequestMessage(HttpMethod.Get, DSFilesHelper.RefreshUrls([attachments.Last()]).Result[0])).Content;
-                    contentLength = (long)(((attachments.Length - 1) * CHUNK_SIZE) + response.Headers.ContentLength);
-                    ContentLenghCache.Add(etag, contentLength);
-
-                    if (ContentLenghCache.Count > 2000) ContentLenghCache.Clear();
-                }
-
                 if (!fullFile && range != null)
                 {
                     if (config.Compression)
@@ -141,8 +136,8 @@ namespace DSFiles_Server.Routes
                     }
 
                     long rangeNum = long.Parse(string.Join("", range.Where(char.IsNumber)));
-
                     int chunk = (int)(rangeNum / CHUNK_SIZE);
+
 #if !RANGE_FULLFILE
                     long start = chunk * CHUNK_SIZE;
                     long end = start + CHUNK_SIZE - 1;
@@ -167,6 +162,8 @@ namespace DSFiles_Server.Routes
                     res.ContentLength64 = end - start + 1;
                     res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
                     res.StatusCode = 206;
+                    
+                    res.OutputStream.Write([], 0, 0);
 
                     await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk, offset);
 #endif
@@ -199,15 +196,13 @@ namespace DSFiles_Server.Routes
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments, int start, int offset = 0)
+        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments, int startChunk, int offset = 0)
         {
             int part = 0;
             int retry = 0;
 
             using (TransformStream ts = new TransformStream(res.OutputStream))
             {
-                byte[] dataPart = null;
-
                 while (part < attachments.Length)
                 {
                     string[] refreshedUrls = await DSFilesHelper.RefreshUrls(attachments.Skip(part).Take(attachments.Length - part > 0 ? RefreshUrlsChunkSize : part - attachments.Length).ToArray());
@@ -225,46 +220,60 @@ namespace DSFiles_Server.Routes
                                 throw new IOException("Client disconnected.");
                             }
 
-                            Console.WriteLine("Downloading id " + CleanUrl(refreshedUrls[e - part]) + " " + ((start + e) + 1) + "/" + attachments.Length);
+                            string id = CleanUrl(refreshedUrls[e - part]);
 
-                            dataPart = await client.GetByteArrayAsync(url);
+                            Console.WriteLine("Downloading id " + id + ' ' + ((startChunk + e) + 1) + "/" + attachments.Length +  (offset!=0 ? " to offset " + id : null));
 
-                            /*using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get,url))
-                            using (HttpResponseMessage response = await client.SendAsync(request))
+                            using (var request = new HttpRequestMessage(HttpMethod.Get, url))
                             {
-                                Stream ds = await response.Content.ReadAsStreamAsync();
-
                                 if (offset != 0 && e == 0)
                                 {
-                                    var dataLength = response.Content.Headers.ContentLength - offset;
-
-                                    //ds.Position = offset;
-                                    //byte[] buffer = new byte[offset];
-                                    //ds.Read(buffer, 0, buffer.Length);
-
-                                    ts.Position = ((start + e + part) * CHUNK_SIZE);
-
-                                    Console.WriteLine("Writing to index " + (ts.Position + offset));
-
-                                    await ds.CopyToAsync(ts, offset, 8120);
-                                    offset = 0;
+                                    request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, null);
                                 }
-                                else
+
+                                using (var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
                                 {
-                                    await ds.CopyToAsync(ts);
+                                    response.EnsureSuccessStatusCode();
 
-                                    //await task.WaitAsync(CancellationToken.None);
+                                    Console.WriteLine("Sending id " + id);
+                                    //dataPart = await response.Content.ReadAsByteArrayAsync();
+
+                                    if (offset != 0 && e == 0)
+                                    {
+                                        ts.Position = ((startChunk + e + part) * CHUNK_SIZE) + offset;
+                                    }
+                                    else
+                                    {
+                                        ts.Position = ((startChunk + e + part) * CHUNK_SIZE);
+                                    }
+
+                                    using (var dataStream = await response.Content.ReadAsStreamAsync())
+                                    {
+                                        byte[] buffer = new byte[1 * 1024 / 2 * 1024];
+                                        int bytesRead;
+                                        while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                                        {
+                                            await ts.WriteAsync(buffer, 0, bytesRead);
+                                        }
+                                    }
                                 }
-                            }*/
+                            }
                         }
                         catch (HttpRequestException ex)
                         {
+                            Console.WriteLine(ex.Message);
+
                             if (ex.StatusCode == HttpStatusCode.NotFound)
                             {
                                 res.Headers.Clear();
                                 res.Close();
                                 return;
                             }
+                        }
+                        catch (HttpListenerException ex)
+                        {
+                            Console.WriteLine(ex.Message);
+                            return;
                         }
                         catch (Exception ex)
                         {
@@ -279,26 +288,8 @@ namespace DSFiles_Server.Routes
                             }
 
                             Thread.Sleep(500);
+
                             goto rety;
-                        }
-
-                        //res.OutputStream.Write([], 0, 0);
-
-                        if (offset != 0 && e == 0)
-                        {
-                            var dataLength = dataPart.Length - offset;
-                            ts.Position = ((start + e + part ) * CHUNK_SIZE);
-
-                            Console.WriteLine("Writing to index " + (ts.Position + offset));
-
-                            await ts.WriteAsync(dataPart, offset, dataLength);
-                            offset = 0;
-                        }
-                        else
-                        {
-                            await ts.WriteAsync(dataPart, 0, dataPart.Length);
-
-                            //await task.WaitAsync(CancellationToken.None);
                         }
                     }
 
@@ -337,6 +328,7 @@ namespace DSFiles_Server.Routes
                 return result;
             }
         }
+        private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
 
         /*private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
         {
@@ -384,7 +376,5 @@ namespace DSFiles_Server.Routes
 
             res.Close();
         }*/
-
-        private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
     }
 }

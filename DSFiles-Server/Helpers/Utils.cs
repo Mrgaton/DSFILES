@@ -61,12 +61,7 @@ namespace DSFiles_Server.Helpers
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
 
         private static SHA1 hash = SHA1.Create();
-
-        public static byte[] Hash(this byte[] data)
-        {
-            return hash.ComputeHash(data);
-        }
-
+        public static byte[] Hash(this byte[] data) => hash.ComputeHash(data);
         public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {
             using (MemoryStream output = new MemoryStream())

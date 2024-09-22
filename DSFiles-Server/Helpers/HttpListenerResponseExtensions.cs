@@ -1,5 +1,6 @@
 ﻿using System.Collections.Specialized;
 using System.Net;
+using System.Security.Policy;
 using System.Text;
 
 namespace DSFiles_Server.Helpers
@@ -76,6 +77,12 @@ namespace DSFiles_Server.Helpers
             res.Send(Encoding.UTF8.GetBytes(data));
         }
 
+        public static void SendCatError(this HttpListenerResponse res, int status)
+        {
+            res.ContentType = "text/html; charset=utf-8";
+            res.Send("<!doctypehtml><html lang=en><meta charset=UTF-8><meta content=\"width=device-width,initial-scale=1\"name=viewport><style>body,html{margin:0;padding:0;height:100%;overflow:hidden}iframe{width:100%;height:100%;border:none}</style><iframe src=https://http.cat/" + status + "></iframe>");
+            res.Close();
+        }
         public static void RedirectCatError(this HttpListenerResponse res, int status)
         {
             res.Redirect("https://http.cat/" + status);

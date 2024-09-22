@@ -1,6 +1,6 @@
 ﻿using System.IO.Compression;
 
-namespace DSFiles
+namespace DSFiles_Client.Helpers
 {
     internal class ZipCompressor
     {
@@ -16,7 +16,7 @@ namespace DSFiles
                 {
                     if (Directory.Exists(commonRoot))
                     {
-                        commonRoot = (commonRoot);
+                        commonRoot = commonRoot;
                     }
                     else
                     {

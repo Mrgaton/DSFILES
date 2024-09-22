@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Client.Utils
 {
@@ -138,7 +137,6 @@ namespace DSFiles_Client.Utils
             }
         }
 
-        //TODO: Esta mamada
         public async Task<string> PostFileToWebhook(FileData[] files)
         {
             MultipartFormDataContent form = new MultipartFormDataContent();
@@ -152,10 +150,7 @@ namespace DSFiles_Client.Utils
                 index++;
             }
 
-            using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
-            {
-                return await req.Content.ReadAsStringAsync();
-            }
+            return await PostFileToWebhook(form);
         }
         public async Task<string> PostFileToWebhook(string[] fileNames, byte[][] filesData)
         {
@@ -164,12 +159,20 @@ namespace DSFiles_Client.Utils
             for (int i = 0; i < fileNames.Length; i++)
             {
                 var buffer = filesData[i];
-
                 if (buffer is null) continue;
-
                 form.Add(new ByteArrayContent(buffer, 0, buffer.Length), i.ToString(), fileNames[i]);
             }
 
+            return await PostFileToWebhook(form);
+        }
+        public async Task<string> PostFileToWebhook(string fileName, byte[] fileData)
+        {
+            return await PostFileToWebhook(new MultipartFormDataContent() {
+                { new ByteArrayContent(fileData, 0, fileData.Length), 0.ToString(), fileName}
+            });
+        }
+        public async Task<string> PostFileToWebhook(MultipartFormDataContent form)
+        {
             using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
             {
                 return await req.Content.ReadAsStringAsync();

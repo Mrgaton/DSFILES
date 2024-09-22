@@ -12,7 +12,6 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Web;
-using ZstdSharp;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace DSFiles_Client
@@ -194,7 +193,7 @@ namespace DSFiles_Client
         [STAThread]
         private static void Main(string[] args)
         {
-            args = ["C:\\Users\\Mrgaton\\Downloads\\King Gnu - SPECIALZ_7765.mp4"];
+            //args = ["C:\\Users\\Mrgaton\\Downloads\\King Gnu - SPECIALZ_7765.mp4"];
 
             if (args.Length > 0 && args[0].StartsWith($"{URLProtocol}://", StringComparison.InvariantCultureIgnoreCase))
             {

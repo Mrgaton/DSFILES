@@ -47,7 +47,7 @@ namespace DSFiles_Server
                 o.AddEntityFramework();
             });
 
-            HttpListener listener = new HttpListener();
+            HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
             listener.Prefixes.Add("http://*:8080/");
             listener.Start();
@@ -106,22 +106,12 @@ namespace DSFiles_Server
                         ConsoleAnimation.HandleAnimation(req, res);
                         break;
 
-                    case "p":
-                        res.SendChunked = true;
-
-                        res.OutputStream.Write(ConsoleAnimation.ANSIHelper.HideScrollbar + "Holaaa que talleee  ee");
-                        res.OutputStream.Write("\nHAHHAHAhSA" + ConsoleAnimation.ANSIHelper.SetPosition(0, 0));
-
-                        res.OutputStream.Write("\nHolaaa que tall " + ConsoleAnimation.ANSIHelper.ClearStartToLine + " eeee");
-                        res.OutputStream.Write("\nee");
-                        break;
-
                     case "favicon.ico":
                         res.SendStatus(404);
                         return;
 
                     default:
-                        res.RedirectCatError(404);
+                        res.SendCatError(404);
                         //res.Send("Te perdiste o que señor patata");
                         break;
                 }

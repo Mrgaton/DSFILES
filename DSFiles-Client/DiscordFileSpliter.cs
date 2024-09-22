@@ -19,8 +19,7 @@ namespace DSFiles
             }
         }*/
 
-        //private const long amountPerFile = (25 * 1024 * 1024) - 256;
-        private const long amountPerFile = (1 * 1024 * 1024) - 256;
+        private const long amountPerFile = (25 * 1024 * 1024) - 256;
 
         private const int MaxTimeListBuffer = 10;
 
@@ -187,67 +186,50 @@ namespace DSFiles
                 ByteConfig config = new ByteConfig() { Compression = compress };
 
                 seedData.WriteByte(config.ToByte());
-
-                await seedData.WriteAsync(BitConverter.GetBytes(webHook.channelId), 0, sizeof(ulong));
+                seedData.Write(BitConverter.GetBytes((uint)(uploadStream.Length % amountPerFile)));
+                seedData.Write(BitConverter.GetBytes(webHook.channelId));
 
                 //await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
 
                 int messagesToSend = (int)((ulong)uploadStream.Length / amountPerFile) + 1, messagesSended = 0;
 
                 ulong[] attachementsIdsList = new ulong[messagesToSend];
+
                 List<ulong> messagesIdsList = [];
 
                 using StreamWriter tempIdsWriter = UnsendedIdsWriter;
 
                 long totalWrited = 0;
 
-                int chunksPerIteration = 2;
-
                 Console.WriteLine("Starting upload of " + messagesToSend + " chunks (" + ByteSizeToString(uploadStream.Length) + ')');
                 Console.WriteLine();
 
                 using (TransformStream ts = new TransformStream(uploadStream))
                 {
-                    for (int i = 1; i - 1 < messagesToSend; i += chunksPerIteration)
+                    for (int i = 1; i - 1 < messagesToSend; i++)
                     {
                         sw.Restart();
 
-                        int chunks = Math.Min((i - 1) + chunksPerIteration, messagesToSend);
+                        byte[] buffer = new byte[amountPerFile * i > ts.Length ? (ts.Length - (amountPerFile * (i - 1))) : amountPerFile];
 
-                        byte[][] buffers = new byte[chunks][];
-                        string[] attachementsNames = new string[chunks]; 
+                        await ts.ReadAsync(buffer, 0, buffer.Length);
 
-                        for (int j = 0; j < chunks; j++)
-                        {
-                            if (i + j > messagesToSend) break;
+                        string attachementName = EncodeAttachementName(webHook.channelId, i, messagesToSend);
 
-                            byte[] buffer = new byte[amountPerFile * i > ts.Length ? (ts.Length - (amountPerFile * (i - 1))) : amountPerFile];
-                            await ts.ReadAsync(buffer, 0, buffer.Length);
-                            buffers[j] = buffer;
 
-                            attachementsNames[j] = EncodeAttachementName(webHook.channelId, i + j, messagesToSend);
-                        }
- 
                     encodeRetry:
 
                         JsonNode? response = null;
 
                         try
                         {
-                            response = JsonNode.Parse(await webHook.PostFileToWebhook(attachementsNames,buffers));
+                            response = JsonNode.Parse(await webHook.PostFileToWebhook(attachementName, buffer));
 
-                            ulong[] attachementsId = new ulong[chunks];
-
-                            for (int j = 0; j < attachementsId.Length; j++)
-                            {
-                                attachementsId[j] = ulong.Parse((string)response["attachments"][j]["id"]);
-
-                                attachementsIdsList[i - 1 + j] = attachementsId[j];
-                            }
+                            var attachementId = attachementsIdsList[i - 1] = ulong.Parse((string)response["attachments"][0]["id"]);
 
                             ulong messageId = ulong.Parse((string)response["id"]);
 
-                            if (attachementsId.Any(id => id <= 0) || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
+                            if (attachementId <= 0 || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
 
                             await tempIdsWriter.WriteLineAsync(messageId.ToString());
                             await tempIdsWriter.FlushAsync();
@@ -261,8 +243,8 @@ namespace DSFiles
                             goto encodeRetry;
                         }
 
-                        messagesSended += chunks;
-                        totalWrited += buffers.Sum(e => e.LongLength);
+                        messagesSended += 1;
+                        totalWrited += buffer.LongLength;
 
                         timeList.Add(sw.ElapsedMilliseconds);
                         if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
@@ -312,6 +294,8 @@ namespace DSFiles
             using (MemoryStream seedData = new MemoryStream(seed.Inflate()))
             {
                 ByteConfig config = new ByteConfig((byte)seedData.ReadByte());
+
+                uint sizeInterval = BitConverter.ToUInt32(seedData.ReadAmout(sizeof(uint)));
 
                 ulong channelId = BitConverter.ToUInt64(seedData.ReadAmout(sizeof(ulong)));
 
