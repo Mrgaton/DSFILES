@@ -4,13 +4,23 @@ using Microsoft.Win32;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Authentication.ExtendedProtection;
 
 namespace DSFiles_Server
 {
     internal class Program
     {
-        public static HttpClient client = new HttpClient();
-
+        public static HttpClient client = new HttpClient(new HttpClientHandler()
+        {
+            CookieContainer = new CookieContainer(100),
+            AllowAutoRedirect = false,
+            SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
+            MaxConnectionsPerServer = short.MaxValue,
+        })
+        {
+            DefaultRequestVersion = HttpVersion.Version30,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
+        };
         private static void Main(string[] args)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -74,8 +84,6 @@ namespace DSFiles_Server
 
             Console.WriteLine($"[{DateTime.Now}] {req.Url.PathAndQuery}");
 
-            try
-            {
                 switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
                 {
                     case "f":
@@ -115,17 +123,8 @@ namespace DSFiles_Server
                         //res.Send("Te perdiste o que señor patata");
                         break;
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine('\n' + ex.ToString());
-            }
 
-            try
-            {
                 res.OutputStream.Close();
-            }
-            catch { }
         }
 
         public static void WriteException(ref Exception ex, params string[] messages)

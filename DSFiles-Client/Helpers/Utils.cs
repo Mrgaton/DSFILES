@@ -59,7 +59,6 @@ namespace DSFiles_Client.Utils
 
         //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
 
-
         public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {
             using (MemoryStream output = new MemoryStream())

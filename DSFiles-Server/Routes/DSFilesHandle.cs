@@ -4,7 +4,6 @@ using DSFiles_Client;
 using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
-using System.Diagnostics;
 using System.Net;
 using System.Text;
 
@@ -12,20 +11,8 @@ namespace DSFiles_Server.Routes
 {
     internal class DSFilesHandle
     {
-        private static HttpClient client = new HttpClient(new HttpClientHandler()
-        {
-            CookieContainer = new CookieContainer(),
-            AllowAutoRedirect = false,
-            SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
-            MaxConnectionsPerServer = short.MaxValue,
+        private static FileExtensionContentTypeProvider contentTypeProvider = new();
 
-        })
-        {
-            DefaultRequestVersion = HttpVersion.Version30,
-            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
-        };
-
-        private static FileExtensionContentTypeProvider contentTypeProvider = new FileExtensionContentTypeProvider();
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
         public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
@@ -77,6 +64,13 @@ namespace DSFiles_Server.Routes
 
                 ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + sizeof(uint) + sizeof(ulong)).ToArray());
 
+                if (ids.Length <= 0)
+                {
+                     res.SendCatError(406);
+
+                    return;
+                }
+
                 long contentLength = ((ids.Length - 1) * CHUNK_SIZE) + relativeLength;
 
                 int i = 0;
@@ -89,7 +83,7 @@ namespace DSFiles_Server.Routes
                 }).ToArray();
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
- 
+
                 if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 3)
                 {
                     res.SendStatus(503);
@@ -162,7 +156,7 @@ namespace DSFiles_Server.Routes
                     res.ContentLength64 = end - start + 1;
                     res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
                     res.StatusCode = 206;
-                    
+
                     res.OutputStream.Write([], 0, 0);
 
                     await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk, offset);
@@ -171,6 +165,8 @@ namespace DSFiles_Server.Routes
                 }
 
                 res.ContentLength64 = contentLength;
+
+                //res.OutputStream.Write([], 0, 0);
 
                 //Thread.Sleep(200);
 
@@ -222,7 +218,7 @@ namespace DSFiles_Server.Routes
 
                             string id = CleanUrl(refreshedUrls[e - part]);
 
-                            Console.WriteLine("Downloading id " + id + ' ' + ((startChunk + e) + 1) + "/" + attachments.Length +  (offset!=0 ? " to offset " + id : null));
+                            Console.WriteLine("Downloading id " + id + ' ' + ((startChunk + e) + 1) + "/" + attachments.Length + (offset != 0 ? " to offset " + id : null));
 
                             using (var request = new HttpRequestMessage(HttpMethod.Get, url))
                             {
@@ -231,7 +227,7 @@ namespace DSFiles_Server.Routes
                                     request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, null);
                                 }
 
-                                using (var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
+                                using (var response = await Program.client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
                                 {
                                     response.EnsureSuccessStatusCode();
 
@@ -250,7 +246,9 @@ namespace DSFiles_Server.Routes
                                     using (var dataStream = await response.Content.ReadAsStreamAsync())
                                     {
                                         byte[] buffer = new byte[1 * 1024 / 2 * 1024];
+
                                         int bytesRead;
+
                                         while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                                         {
                                             await ts.WriteAsync(buffer, 0, bytesRead);
@@ -265,6 +263,7 @@ namespace DSFiles_Server.Routes
 
                             if (ex.StatusCode == HttpStatusCode.NotFound)
                             {
+                                res.SendCatError(204);
                                 res.Headers.Clear();
                                 res.Close();
                                 return;
@@ -273,6 +272,7 @@ namespace DSFiles_Server.Routes
                         catch (HttpListenerException ex)
                         {
                             Console.WriteLine(ex.Message);
+
                             return;
                         }
                         catch (Exception ex)
@@ -328,6 +328,7 @@ namespace DSFiles_Server.Routes
                 return result;
             }
         }
+
         private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
 
         /*private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)

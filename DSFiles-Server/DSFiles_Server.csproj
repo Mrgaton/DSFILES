@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -20,8 +21,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.App" Version="2.2.8" />
-    <PackageReference Include="Sentry.AspNet" Version="4.10.2" />
-    <PackageReference Include="Sentry.EntityFramework" Version="4.10.2" />
+    <PackageReference Include="Sentry.AspNet" Version="4.12.1" />
+    <PackageReference Include="Sentry.EntityFramework" Version="4.12.1" />
     <PackageReference Include="SkiaSharp" Version="3.0.0-preview.4.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.0.0-preview.4.1" />
   </ItemGroup>

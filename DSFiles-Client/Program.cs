@@ -72,40 +72,53 @@ namespace DSFiles_Client
 
             return Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.ToBase64Url() + '/' + secret.ToBase64Url() + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url() + ':' + webHookHelper.token;
         }
-
-        private static string WriteUploaded(string fileName, byte[] seed, byte[] secret, ulong size, WebHookHelper webHookHelper)
+        private class Upload
+        {
+            public string FileName { get; set; }
+            public string DownloadToken { get; set; }
+            public string RemoveToken { get; set; }
+            public string WebLink { get; set; }
+            public string? Shortened { get; set; }
+            public Upload() { }
+        }
+        private static Upload WriteUploaded(string fileName, byte[] seed, byte[] secret, ulong size, WebHookHelper webHookHelper)
         {
             var fileSeed = FileSeedToString(fileName, seed, secret, webHookHelper);
             var seedSplited = fileSeed.Split('/');
 
+            var upload = new Upload()
+            {
+                FileName = fileName,
+                DownloadToken = seedSplited[0],
+                RemoveToken = seedSplited.Last(),
+                WebLink = $"https://df.gato.ovh/d/{seedSplited[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}",
+            };
+
             StringBuilder sb = new StringBuilder();
 
             sb.AppendLine($"`FileName:` {fileName}");
-            sb.AppendLine($"`DownloadToken:` {seedSplited[0]}");
-            sb.AppendLine($"`RemoveToken:` {seedSplited.Last()}");
-            sb.AppendLine($"`WebLink:` https://df.gato.ovh/df/{seedSplited[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}");
+            sb.AppendLine($"`DownloadToken:` {upload.DownloadToken}");
+            sb.AppendLine($"`RemoveToken:` {upload.RemoveToken}");
+            sb.AppendLine($"`WebLink:` {upload.WebLink}");
 
-            //sb.AppendLine($"`DownloadLink:` https://df.gato.ovh/df/{fileSeed.Split('/')[0]}");
+            upload.Shortened = SendJspaste(fileSeed);
 
-            string jspasteSeed = SendJspaste(fileSeed);
-
-            sb.AppendLine($"`Shortened:` {jspasteSeed}");
+            sb.AppendLine($"`Shortened:` {upload.Shortened}");
 
             if (!string.IsNullOrEmpty(API_TOKEN))
             {
                 DSServerHelper.AddFile(fileName,
                     seedSplited[0].Split(':').Last(),
-                    seedSplited.Last(),
-                    jspasteSeed,
+                    upload.RemoveToken,
+                    upload.Shortened,
                     size).GetAwaiter().GetResult();
             }
 
-            //UploadedFilesWriter.BaseStream.Position = UploadedFilesWriter.BaseStream.Length - 1;
             UploadedFilesWriter.WriteLine(sb.ToString());
 
             webHookHelper.SendMessageInChunks(sb.ToString()).GetAwaiter().GetResult();
 
-            return jspasteSeed;
+            return upload;
         }
 
         private static string SendJspaste(string data)
@@ -210,14 +223,54 @@ namespace DSFiles_Client
                 }
             }
 
-            using (var protocolKey = Registry.ClassesRoot.OpenSubKey(URLProtocol, true))
+            using (var protocolKey = Registry.ClassesRoot.OpenSubKey(URLProtocol, false))
             {
                 bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
+                string filepath = Process.GetCurrentProcess().MainModule.FileName;
+
                 if (admin && protocolKey == null)
                 {
+                    RegistrySecurity security = new RegistrySecurity();
+
+                    security.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                        RegistryRights.FullControl,
+                        InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                        PropagationFlags.InheritOnly,
+                        AccessControlType.Allow));
+
+                    string title = "Upload to DSFILES";
+
+                    using (var key = Registry.ClassesRoot.CreateSubKey(@"*\shell\" + URLProtocol))
+                    {
+                        RegistrySecurity keySecurity = key.GetAccessControl();
+                        keySecurity.SetAccessRuleProtection(true, false); 
+                        key.SetAccessControl(keySecurity);
+
+                        key.SetValue("", title);
+                        key.SetValue("Icon", filepath);
+
+                        key.SetAccessControl(security);
+                    }
+
+                    using (var key = Registry.ClassesRoot.CreateSubKey(@"Directory\shell\" + URLProtocol))
+                    {
+                        RegistrySecurity keySecurity = key.GetAccessControl();
+                        keySecurity.SetAccessRuleProtection(true, false);
+                        key.SetAccessControl(keySecurity);
+
+                        key.SetValue("", title);
+                        key.SetValue("Icon", filepath);
+
+                        key.SetAccessControl(security);
+                    }
+
                     using (var protocol = Registry.ClassesRoot.CreateSubKey(URLProtocol))
                     {
+                        RegistrySecurity keySecurity = protocol.GetAccessControl();
+                        keySecurity.SetAccessRuleProtection(true, false);
+                        protocol.SetAccessControl(keySecurity);
+
                         protocol.SetValue(string.Empty, $"URL: {URLProtocol} Protocol");
                         protocol.SetValue("URL Protocol", string.Empty);
 
@@ -225,14 +278,6 @@ namespace DSFiles_Client
                         {
                             protocolShellKey.CreateSubKey("open");
                         }
-
-                        RegistrySecurity security = new RegistrySecurity();
-
-                        security.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                            RegistryRights.FullControl,
-                            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
-                            PropagationFlags.None,
-                            AccessControlType.Allow));
 
                         protocol.SetAccessControl(security);
                     }
@@ -245,9 +290,19 @@ namespace DSFiles_Client
                     return;
                 }
 
+                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"*\\shell\\{URLProtocol}", true).CreateSubKey("command"))
+                {
+                    commandKey.SetValue(string.Empty, "\"" + filepath + "\" \"%1\"");
+                }
+
+                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"Directory\\shell\\{URLProtocol}", true).CreateSubKey("command"))
+                {
+                    commandKey.SetValue(string.Empty, "\"" + filepath + "\" \"%1\"");
+                }
+
                 using (var commandKey = Registry.ClassesRoot.OpenSubKey($"{URLProtocol}\\shell\\open", true).CreateSubKey("command"))
                 {
-                    commandKey.SetValue(string.Empty, Process.GetCurrentProcess().MainModule.FileName + " %1");
+                    commandKey.SetValue(string.Empty, "\"" + filepath +"\" \"%1\"");
                 }
             }
 
@@ -256,14 +311,15 @@ namespace DSFiles_Client
 
             if (args.Length > 0 && args[0] == "ask_upload")
             {
-                OpenFileDialog ofd = new OpenFileDialog();
-
-                ofd.ValidateNames = false;
-                ofd.CheckFileExists = false;
-                ofd.CheckPathExists = true;
-                ofd.Multiselect = true;
-                ofd.DereferenceLinks = true;
-                ofd.FileName = "Upload Selection.";
+                OpenFileDialog ofd = new OpenFileDialog()
+                {
+                    ValidateNames = false,
+                    CheckFileExists = false,
+                    CheckPathExists = true,
+                    Multiselect = true,
+                    DereferenceLinks = true,
+                    FileName = "Upload Selection."
+                };
 
                 if (ofd.ShowDialog() != DialogResult.OK) return;
 
@@ -306,7 +362,7 @@ namespace DSFiles_Client
                     }
                 }
 
-                if (args[0] == "/train")
+                /*if (args[0] == "/train")
                 {
                     List<byte[]> data = [];
 
@@ -318,7 +374,7 @@ namespace DSFiles_Client
                     var dict = DictBuilder.TrainFromBufferFastCover(data, 22, 512 * 1024 * 1024);
 
                     File.WriteAllBytes("trained.dict", dict.ToArray());
-                }
+                }*/
 
                 return;
             }
@@ -425,9 +481,9 @@ namespace DSFiles_Client
                     {
                         var result = DiscordFilesSpliter.Encode(webHookHelper, fs).GetAwaiter().GetResult();
 
-                        string jspLink = WriteUploaded(Path.GetFileName(args[1]), result.seed, result.secret, result.size, webHookHelper);
+                        var uploaded = WriteUploaded(Path.GetFileName(args[1]), result.seed, result.secret, result.size, webHookHelper);
 
-                        Console.Write("FileSeed: " + jspLink);
+                        Console.Write("FileSeed: " + uploaded.Shortened ?? uploaded.DownloadToken);
                     }
 
                     return;
@@ -563,15 +619,16 @@ namespace DSFiles_Client
 
                 string fileName = Path.GetFileName(filePath);
 
-                string fileSeed = WriteUploaded(fileName, result.seed, result.secret, result.size, webHookHelper);
+                var uploaded = WriteUploaded(fileName, result.seed, result.secret, result.size, webHookHelper);
 
                 try
                 {
-                    Clipboard.SetText(fileSeed);
+                    Clipboard.SetText(uploaded.WebLink);
                 }
                 catch { }
 
-                Console.Write("FileSeed: " + fileSeed);
+                Console.WriteLine("WebLink: " + uploaded.WebLink + '\n');
+                Console.Write("FileSeed: " + uploaded.Shortened);
 
                 Console.ForegroundColor = Console.BackgroundColor;
                 Console.ReadLine();
@@ -593,26 +650,6 @@ namespace DSFiles_Client
             byte[] seed = fileDataSplited.Last().FromBase64Url();
 
             string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
-
-            /*if (destFileName.EndsWith(".zip",StringComparison.InvariantCultureIgnoreCase))
-            {
-                SaveFileDialog sfd = new SaveFileDialog()
-                {
-                    FileName = "YourFolderName", // Predefined folder name
-                    Filter = "Directories|*.this.directory", // Choose any extension you want
-                    InitialDirectory = @"C:\Your\Initial\Directory" // Initial directory
-                };
-
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    // Now here's our save folder
-                    string savePath = Path.GetDirectoryName(sfd.FileName);
-                    // Do whatever
-
-                    Console.WriteLine(savePath);
-                    Console.ReadLine();
-                }
-            }*/
 
             SaveFileDialog sfd = new SaveFileDialog()
             {

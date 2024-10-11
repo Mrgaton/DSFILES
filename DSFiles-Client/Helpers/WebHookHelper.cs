@@ -125,6 +125,7 @@ namespace DSFiles_Client.Utils
                 }
             }
         }
+
         public struct FileData
         {
             public string FileName { get; set; }
@@ -152,6 +153,7 @@ namespace DSFiles_Client.Utils
 
             return await PostFileToWebhook(form);
         }
+
         public async Task<string> PostFileToWebhook(string[] fileNames, byte[][] filesData)
         {
             MultipartFormDataContent form = new MultipartFormDataContent();
@@ -165,12 +167,14 @@ namespace DSFiles_Client.Utils
 
             return await PostFileToWebhook(form);
         }
+
         public async Task<string> PostFileToWebhook(string fileName, byte[] fileData)
         {
             return await PostFileToWebhook(new MultipartFormDataContent() {
                 { new ByteArrayContent(fileData, 0, fileData.Length), 0.ToString(), fileName}
             });
         }
+
         public async Task<string> PostFileToWebhook(MultipartFormDataContent form)
         {
             using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))

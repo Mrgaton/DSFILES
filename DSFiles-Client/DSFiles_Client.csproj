@@ -13,6 +13,7 @@
     <AssemblyVersion>1.0.1</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
     <Version>$(VersionPrefix)</Version>
+    <ApplicationIcon>package.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -22,6 +23,10 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <IsPublishable>False</IsPublishable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="package.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="JSPaste.Net" Version="0.0.9" />
@@ -55,6 +60,6 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="set &quot;path=$(TargetPath)&quot;&#xD;&#xA;&#xD;&#xA;set &quot;path=%25path:.dll=.exe%25&quot;&#xD;&#xA;&#xD;&#xA;&#xD;&#xA;&quot;%25USERPROFILE%25\Mega\Programas\Tools\upx-4.2.4-win64\upx.exe&quot; --compress-icons=3 --force --best --ultra-brute --all-filters &quot;%25path%25&quot;&#xD;&#xA;" />
+    <Exec Command="set &quot;path=$(TargetPath)&quot;&#xD;&#xA;&#xD;&#xA;set &quot;path=%25path:.dll=.exe%25&quot;&#xD;&#xA;&#xD;&#xA;&#xD;&#xA;&quot;%25USERPROFILE%25\Mega\Programas\Tools\upx-4.2.4-win64\upx.exe&quot; --force --best --ultra-brute --all-filters &quot;%25path%25&quot;&#xD;&#xA;" />
   </Target>
 </Project>

@@ -216,7 +216,6 @@ namespace DSFiles
 
                         string attachementName = EncodeAttachementName(webHook.channelId, i, messagesToSend);
 
-
                     encodeRetry:
 
                         JsonNode? response = null;

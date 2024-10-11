@@ -41,28 +41,31 @@ namespace DSFiles_Client
         }
 
         public override int Read(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+
         public new async Task<int> ReadAsync(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+
         public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
         public new async Task WriteAsync(byte[] buffer, int offset, int count)
         {
-            D(ref buffer, (int)this.Position);
+            D(ref buffer, this.Position);
 
             this.Position += count;
 
             await _baseStream.WriteAsync(buffer, offset, count);
         }
 
-        public static void D(ref byte[] data, int position)
+        public static void D(ref byte[] data, long position)
         {
             for (int i = 0; i < data.Length; i++)
             {
-                int relativeIndex = (position) + i;
+                long relativeIndex = (position) + i;
 
-                int keyIndex = (relativeIndex % Key.Length);
+                long keyIndex = (relativeIndex % Key.Length);
 
                 data[i] ^= Key[keyIndex];
             }
         }
+
     }
 }

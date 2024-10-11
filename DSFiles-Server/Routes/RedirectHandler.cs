@@ -1,6 +1,6 @@
 ﻿using DSFiles_Server.Helpers;
 using System.Net;
-using System.Text;
+using System.Web;
 
 namespace DSFiles_Server.Routes
 {
@@ -18,7 +18,7 @@ namespace DSFiles_Server.Routes
 
                     string text = await response.Content.ReadAsStringAsync();
 
-                    string url = CleanString(text.Split('\n').LastOrDefault(l => l.Contains("://")));
+                    string url = HttpUtility.UrlEncode(text.Split('\n').LastOrDefault(l => l.Contains("://")));
 
                     if (iframe)
                     {
@@ -32,17 +32,6 @@ namespace DSFiles_Server.Routes
                     }
                 }
             }
-        }
-        private static HashSet<char> removeChars = new HashSet<char>(" ?&^$#@!()+-,;<>’\'-_*");
-        public static string CleanString(string dirtyString)
-        {
-            StringBuilder result = new StringBuilder(dirtyString.Length);
-
-            foreach (char c in dirtyString)
-                if (!removeChars.Contains(c))
-                    result.Append(c);
-
-            return result.ToString();
         }
     }
 }

@@ -40,28 +40,42 @@ namespace DSFiles_Client
             _baseStream.SetLength(value);
         }
 
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count)
+        {
+            long pos = this.Position;
+
+            int result = await _baseStream.ReadAsync(buffer, offset, count);
+
+            if (result > 0)
+            {
+                D(ref buffer, pos);
+
+                this.Position += count;
+            }
+
+            return result;
+        }
 
         public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
         public new async Task WriteAsync(byte[] buffer, int offset, int count)
         {
-            D(ref buffer, (int)this.Position + buffer.Length);
+            D(ref buffer, this.Position);
 
-            this.Position += count + offset;
+            this.Position += count;
 
             await _baseStream.WriteAsync(buffer, offset, count);
         }
 
-        public static void D(ref byte[] data, int position)
+        public static void D(ref byte[] data, long position)
         {
             for (int i = 0; i < data.Length; i++)
             {
-                int relativeIndex = (position ) + i;
+                long relativeIndex = (position) + i;
 
-                int keyIndex = (relativeIndex % Key.Length);
+                long keyIndex = (relativeIndex % Key.Length);
 
                 data[i] ^= Key[keyIndex];
             }
