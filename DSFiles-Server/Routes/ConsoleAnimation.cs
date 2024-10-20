@@ -37,7 +37,7 @@ namespace DSFiles_Server.Routes
         {
             if (req.Headers.Get("accept").Contains("html", StringComparison.InvariantCultureIgnoreCase))
             {
-                res.RedirectCatError(418);
+                res.SendCatError(418);
                 return;
             }
 
@@ -63,9 +63,9 @@ namespace DSFiles_Server.Routes
                 url = TenorResolver.Resovlve(url);
             }
 
-            var gifNameB = Encoding.UTF8.GetBytes(url.Split('/').Last().Split('.')[0].Replace('-', ' '));
-            gifNameB[0] = (byte)char.ToUpper((char)gifNameB[0]);
-            gifName = Encoding.UTF8.GetString(gifNameB);
+            var gifNameByte = Encoding.UTF8.GetBytes(url.Split('/').Last().Split('.')[0].Replace('-', ' '));
+            gifNameByte[0] = (byte)char.ToUpper((char)gifNameByte[0]);
+            gifName = Encoding.UTF8.GetString(gifNameByte);
 
             int timeOffset = int.Parse(req.QueryString["offset"] ?? req.QueryString["of"] ?? req.QueryString["o"] ?? "5");
 

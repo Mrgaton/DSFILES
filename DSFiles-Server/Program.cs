@@ -4,7 +4,6 @@ using Microsoft.Win32;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Security.Authentication.ExtendedProtection;
 
 namespace DSFiles_Server
 {
@@ -12,13 +11,13 @@ namespace DSFiles_Server
     {
         public static HttpClient client = new HttpClient(new HttpClientHandler()
         {
-            CookieContainer = new CookieContainer(100),
+            CookieContainer = new CookieContainer(75),
             AllowAutoRedirect = false,
             SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
             MaxConnectionsPerServer = short.MaxValue,
         })
         {
-            DefaultRequestVersion = HttpVersion.Version30,
+            DefaultRequestVersion = HttpVersion.Version11,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
         private static void Main(string[] args)
@@ -62,7 +61,7 @@ namespace DSFiles_Server
             listener.Prefixes.Add("http://*:8080/");
             listener.Start();
 
-            Console.WriteLine("Listening on 8080...");
+            Console.WriteLine("DSFILES listening on 8080...");
 
             while (true)
             {
@@ -84,47 +83,51 @@ namespace DSFiles_Server
 
             Console.WriteLine($"[{DateTime.Now}] {req.Url.PathAndQuery}");
 
-                switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
-                {
-                    case "f":
-                    case "d":
-                    case "df":
-                        await DSFilesHandle.HandleFile(req, res);
-                        break;
+            switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
+            {
+                case "f":
+                case "d":
+                case "df":
+                    await DSFilesHandle.HandleFile(req, res);
+                    break;
 
-                    case "r":
-                    case "rd":
-                        await RedirectHandler.HandleRedirect(req, res);
-                        break;
+                case "r":
+                case "rd":
+                    await RedirectHandler.HandleRedirect(req, res);
+                    break;
 
-                    case "rick":
-                        res.Redirect("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-                        res.Close();
-                        break;
+                case "rick":
+                    res.Redirect("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                    res.Close();
+                    break;
 
-                    case "download":
-                        SpeedTest.HandleDownload(req, res);
-                        break;
+                case "download":
+                    SpeedTest.HandleDownload(req, res);
+                    break;
 
-                    case "upload":
-                        SpeedTest.HandleUpload(req, res);
-                        break;
+                case "upload":
+                    SpeedTest.HandleUpload(req, res);
+                    break;
 
-                    case "animate":
-                        ConsoleAnimation.HandleAnimation(req, res);
-                        break;
+                case "animate":
+                    ConsoleAnimation.HandleAnimation(req, res);
+                    break;
 
-                    case "favicon.ico":
-                        res.SendStatus(404);
-                        return;
+                case "favicon.ico":
+                    res.SendStatus(404);
+                    return;
 
-                    default:
-                        res.SendCatError(404);
-                        //res.Send("Te perdiste o que señor patata");
-                        break;
-                }
+                default:
+                    res.SendCatError(404);
+                    //res.Send("Te perdiste o que señor patata");
+                    break;
+            }
 
+            try
+            {
                 res.OutputStream.Close();
+            }
+            catch (ObjectDisposedException) { }
         }
 
         public static void WriteException(ref Exception ex, params string[] messages)

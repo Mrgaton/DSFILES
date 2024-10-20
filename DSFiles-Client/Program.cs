@@ -7,12 +7,12 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security;
-using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Web;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
+using File = System.IO.File;
 
 namespace DSFiles_Client
 {
@@ -223,88 +223,72 @@ namespace DSFiles_Client
                 }
             }
 
+            string executablePath = Process.GetCurrentProcess().MainModule.FileName;
+            //string shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), Path.GetFileNameWithoutExtension(executablePath) + ".lnk");
+
             using (var protocolKey = Registry.ClassesRoot.OpenSubKey(URLProtocol, false))
             {
                 bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
-                string filepath = Process.GetCurrentProcess().MainModule.FileName;
 
                 if (admin && protocolKey == null)
                 {
-                    RegistrySecurity security = new RegistrySecurity();
-
-                    security.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                        RegistryRights.FullControl,
-                        InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
-                        PropagationFlags.InheritOnly,
-                        AccessControlType.Allow));
-
                     string title = "Upload to DSFILES";
 
                     using (var key = Registry.ClassesRoot.CreateSubKey(@"*\shell\" + URLProtocol))
                     {
-                        RegistrySecurity keySecurity = key.GetAccessControl();
-                        keySecurity.SetAccessRuleProtection(true, false); 
-                        key.SetAccessControl(keySecurity);
-
                         key.SetValue("", title);
-                        key.SetValue("Icon", filepath);
+                        key.SetValue("Icon", executablePath);
 
-                        key.SetAccessControl(security);
+                        using (var commandKey = key.CreateSubKey("command"))
+                        {
+                            commandKey.SetValue(string.Empty, "\"" + executablePath + "\" \"%1\"");
+                        }
                     }
 
                     using (var key = Registry.ClassesRoot.CreateSubKey(@"Directory\shell\" + URLProtocol))
                     {
-                        RegistrySecurity keySecurity = key.GetAccessControl();
-                        keySecurity.SetAccessRuleProtection(true, false);
-                        key.SetAccessControl(keySecurity);
-
                         key.SetValue("", title);
-                        key.SetValue("Icon", filepath);
+                        key.SetValue("Icon", executablePath);
 
-                        key.SetAccessControl(security);
+                        using (var commandKey = key.CreateSubKey("command"))
+                        {
+                            commandKey.SetValue(string.Empty, "\"" + executablePath + "\" \"%1\"");
+                        }
                     }
 
                     using (var protocol = Registry.ClassesRoot.CreateSubKey(URLProtocol))
                     {
-                        RegistrySecurity keySecurity = protocol.GetAccessControl();
-                        keySecurity.SetAccessRuleProtection(true, false);
-                        protocol.SetAccessControl(keySecurity);
-
                         protocol.SetValue(string.Empty, $"URL: {URLProtocol} Protocol");
                         protocol.SetValue("URL Protocol", string.Empty);
 
-                        using (var protocolShellKey = protocol.CreateSubKey("shell"))
+                        using (var protocolOpenKey = protocol.CreateSubKey("shell").CreateSubKey("open"))
                         {
-                            protocolShellKey.CreateSubKey("open");
+                            using (var commandKey = protocolOpenKey.CreateSubKey("command"))
+                            {
+                                commandKey.SetValue(string.Empty, "\"" + executablePath + "\" \"%1\"");
+                            }
                         }
-
-                        protocol.SetAccessControl(security);
                     }
                 }
 
-                if (protocolKey == null && !admin)
+                if (protocolKey == null && !admin && !((string)Registry.ClassesRoot.OpenSubKey(URLProtocol + "\\shell\\open", false).GetValue(string.Empty)).Contains(executablePath))
                 {
-                    var exception = (Exception)(new SecurityException("Can't create registry url protocol please run as administrator"));
+                    var exception = (Exception)(new SecurityException("Can't modify url protocol please run as administrator"));
                     WriteException(ref exception);
                     return;
                 }
-
-                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"*\\shell\\{URLProtocol}", true).CreateSubKey("command"))
-                {
-                    commandKey.SetValue(string.Empty, "\"" + filepath + "\" \"%1\"");
-                }
-
-                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"Directory\\shell\\{URLProtocol}", true).CreateSubKey("command"))
-                {
-                    commandKey.SetValue(string.Empty, "\"" + filepath + "\" \"%1\"");
-                }
-
-                using (var commandKey = Registry.ClassesRoot.OpenSubKey($"{URLProtocol}\\shell\\open", true).CreateSubKey("command"))
-                {
-                    commandKey.SetValue(string.Empty, "\"" + filepath +"\" \"%1\"");
-                }
             }
+
+
+            /*WshShell shell = new WshShell();
+            IWshShortcut shortcut = (IWshShortcut)shell.CreateShortcut(shortcutPath);
+
+            shortcut.TargetPath = executablePath;
+            shortcut.WorkingDirectory = Path.GetDirectoryName(executablePath);
+            shortcut.Description = "Description of your shortcut";
+            shortcut.IconLocation = executablePath; // Set the icon to the executable
+            shortcut.Save();*/
 
             //Console.WriteLine('[' + string.Join(", ", args.Select(c => '\"' + c + '\"')) + ']');
             //args = ["upload", "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2OGJkNTA5YzdmZjliOTcxYmUzMzkwNyIsImRhdGEiOiJBQUFBQVEiLCJpYXQiOjE3MjA3MjMzNzh9.eBcyUX7r1oQgX_gPbu6BDmffVVttxam9zSJ_pYQDvP4"];
@@ -690,7 +674,7 @@ namespace DSFiles_Client
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(string.Join('\n', messages) + '\n' + ex.ToString() + '\n');
             Console.ForegroundColor = lastColor;
-            Thread.Sleep(2000);
+            Thread.Sleep(5000);
         }
     }
 }

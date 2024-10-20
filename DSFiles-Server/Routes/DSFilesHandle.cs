@@ -5,13 +5,41 @@ using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
 using System.Net;
+using System.Reflection.PortableExecutable;
 using System.Text;
 
 namespace DSFiles_Server.Routes
 {
     internal class DSFilesHandle
     {
-        private static FileExtensionContentTypeProvider contentTypeProvider = new();
+        private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
+        {
+            {".mkv","video/x-matroska" },
+            {".ogg","audio/ogg" }
+        };
+
+        private static FileExtensionContentTypeProvider contentTypeProvider = CreateProvider();
+
+        private static FileExtensionContentTypeProvider CreateProvider()
+        {
+            var provider = new FileExtensionContentTypeProvider();
+
+            foreach (var type in contentTypes)
+            {
+                if (!provider.Mappings.ContainsKey(type.Key))
+                {
+                    provider.Mappings.Add(type.Key, type.Value);
+                }
+                else
+                {
+                    provider.Mappings[type.Key] = type.Value;
+                }
+
+                //Console.WriteLine(type.Key + " | " + type.Value);
+            }
+
+            return provider;
+        }
 
         private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
@@ -66,7 +94,7 @@ namespace DSFiles_Server.Routes
 
                 if (ids.Length <= 0)
                 {
-                     res.SendCatError(406);
+                    res.SendCatError(406);
 
                     return;
                 }
@@ -90,7 +118,7 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                contentTypeProvider.TryGetContentType(fileName.Replace("mkv", "mp4", StringComparison.InvariantCultureIgnoreCase), out string? contentType);
+                contentTypeProvider.TryGetContentType(fileName, out string? contentType);
 
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
                 res.AddHeader("Accept-Ranges", "bytes");
@@ -102,7 +130,7 @@ namespace DSFiles_Server.Routes
                 }
                 else
                 {
-                    res.AddHeader("Cache-Control", "public, max-age=31536000");
+                    res.AddHeader("Cache-Control", "public, max-age=86300");
                 }
 
                 if (config.Compression) res.AddHeader("content-encoding", "br");
@@ -156,7 +184,6 @@ namespace DSFiles_Server.Routes
                     res.ContentLength64 = end - start + 1;
                     res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
                     res.StatusCode = 206;
-
                     res.OutputStream.Write([], 0, 0);
 
                     await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk, offset);
@@ -181,6 +208,9 @@ namespace DSFiles_Server.Routes
             catch (Exception ex)
             {
                 GC.Collect();
+
+                res.Headers.Remove(HttpRequestHeader.CacheControl);
+                res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
 
                 Program.WriteException(ref ex);
 
@@ -263,8 +293,10 @@ namespace DSFiles_Server.Routes
 
                             if (ex.StatusCode == HttpStatusCode.NotFound)
                             {
+                                res.Headers.Remove(HttpRequestHeader.CacheControl);
+                                res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+
                                 res.SendCatError(204);
-                                res.Headers.Clear();
                                 res.Close();
                                 return;
                             }

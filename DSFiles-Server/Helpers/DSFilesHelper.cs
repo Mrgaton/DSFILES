@@ -7,7 +7,7 @@ namespace DSFiles_Server.Helpers
     {
         private static byte[] XorKey = Properties.Resources.bin;
 
-        private static readonly Dictionary<string, string> cache = new Dictionary<string, string>();
+        private static readonly Dictionary<string, (string refreshedUrl, DateTime time)> cache = new();
 
         private static readonly int maxCacheSize = 3 * 1000;
 
@@ -15,14 +15,19 @@ namespace DSFiles_Server.Helpers
         {
             if (urls.Length > 50) throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
 
-            List<string> refreshedUrls = new List<string>();
-            List<string> urlsToRefresh = new List<string>();
+            List<string> refreshedUrls = [];
+            List<string> urlsToRefresh = [];
 
             foreach (var url in urls)
             {
                 if (cache.ContainsKey(url))
                 {
-                    refreshedUrls.Add(cache[url]);
+                    var info = cache[url];
+
+                    if ((DateTime.Now - info.time).TotalHours <= 23)
+                    {
+                        refreshedUrls.Add(info.refreshedUrl);
+                    }
                 }
                 else
                 {
@@ -43,9 +48,14 @@ namespace DSFiles_Server.Helpers
                         cache.Remove(oldestKey);
                     }
 
-                    cache[urlsToRefresh[i]] = refreshedUrlsFromApi[i];
+                    var refreshedUrl = refreshedUrlsFromApi[i];
 
-                    refreshedUrls.Add(refreshedUrlsFromApi[i]);
+                    if (refreshedUrl.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        cache[urlsToRefresh[i]] = (refreshedUrl, DateTime.Now);
+                    }
+
+                    refreshedUrls.Add(refreshedUrl);
                 }
             }
 

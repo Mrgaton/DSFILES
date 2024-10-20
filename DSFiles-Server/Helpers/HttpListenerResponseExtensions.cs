@@ -73,6 +73,7 @@ namespace DSFiles_Server.Helpers
                 return;
             }
 
+            res.Headers.Set(HttpRequestHeader.Warning, data);
             res.Send(Encoding.UTF8.GetBytes(data));
         }
 
