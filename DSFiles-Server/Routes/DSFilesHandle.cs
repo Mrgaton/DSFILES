@@ -5,7 +5,6 @@ using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
 using System.Net;
-using System.Reflection.PortableExecutable;
 using System.Text;
 
 namespace DSFiles_Server.Routes
@@ -14,8 +13,15 @@ namespace DSFiles_Server.Routes
     {
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {
-            {".mkv","video/x-matroska" },
-            {".ogg","audio/ogg" }
+            {".mkv","video/matroska" },
+            {".mk3d","video/matroska-3d" },
+            {".mka","audio/matroska" },
+
+            {".ogg","audio/ogg" },
+            {".flac","audio/flac" },
+            {".mov","video/quicktime" },
+            {".webm","audio/webm" },
+            {".adts","audio/aac" }
         };
 
         private static FileExtensionContentTypeProvider contentTypeProvider = CreateProvider();

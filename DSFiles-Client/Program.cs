@@ -230,8 +230,7 @@ namespace DSFiles_Client
             {
                 bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
-
-                if (admin && protocolKey == null)
+                if (admin)
                 {
                     string title = "Upload to DSFILES";
 
@@ -272,7 +271,9 @@ namespace DSFiles_Client
                     }
                 }
 
-                if (protocolKey == null && !admin && !((string)Registry.ClassesRoot.OpenSubKey(URLProtocol + "\\shell\\open", false).GetValue(string.Empty)).Contains(executablePath))
+                var value = ((string)Registry.ClassesRoot.OpenSubKey(URLProtocol + "\\shell\\open\\command", false).GetValue(string.Empty));
+
+                if ((protocolKey == null || (value == null || !value.Contains(executablePath))) && !admin)
                 {
                     var exception = (Exception)(new SecurityException("Can't modify url protocol please run as administrator"));
                     WriteException(ref exception);
@@ -672,7 +673,7 @@ namespace DSFiles_Client
         {
             var lastColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(string.Join('\n', messages) + '\n' + ex.ToString() + '\n');
+            Console.WriteLine(string.Join('\n', messages.Where(m => !string.IsNullOrEmpty(m))) + '\n' + ex.ToString() + '\n');
             Console.ForegroundColor = lastColor;
             Thread.Sleep(5000);
         }

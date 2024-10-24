@@ -66,6 +66,5 @@ namespace DSFiles_Client
                 data[i] ^= Key[keyIndex];
             }
         }
-
     }
 }

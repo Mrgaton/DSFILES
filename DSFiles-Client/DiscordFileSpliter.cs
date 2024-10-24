@@ -175,7 +175,7 @@ namespace DSFiles
                 await stream.DisposeAsync();
 
                 long compressedSize = uploadStream.Length;
-                Console.WriteLine("File compressed " + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + "% compress ratio new size " + ByteSizeToString(compressedSize));
+                Console.WriteLine("File compressed " + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + "% compress ratio new size " + ByteSizeToString(compressedSize) + " from " + ByteSizeToString(originalFileSize));
                 Console.WriteLine();
 
                 uploadStream.Position = 0;
