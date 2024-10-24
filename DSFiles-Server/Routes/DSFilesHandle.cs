@@ -5,6 +5,7 @@ using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
 using System.Net;
+using System.Net.Mime;
 using System.Text;
 
 namespace DSFiles_Server.Routes
@@ -118,9 +119,10 @@ namespace DSFiles_Server.Routes
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
 
-                if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 3)
+                if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 2)
                 {
-                    res.SendStatus(503);
+                    res.ContentType = "text/html; charset=utf-8";
+                    res.SendStatus(200,Properties.Resources.BotsPage);
                     return;
                 }
 
@@ -130,7 +132,7 @@ namespace DSFiles_Server.Routes
                 res.AddHeader("Accept-Ranges", "bytes");
                 //res.AddHeader("ETAG", etag.ToBase64Url());
 
-                if (ids.Length > 3)
+                if (ids.Length > 2)
                 {
                     res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
                 }

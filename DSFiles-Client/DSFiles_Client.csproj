@@ -59,8 +59,4 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
-
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="set &quot;path=$(TargetPath)&quot;&#xD;&#xA;&#xD;&#xA;set &quot;path=%25path:.dll=.exe%25&quot;&#xD;&#xA;&#xD;&#xA;&#xD;&#xA;rem &quot;%25USERPROFILE%25\Mega\Programas\Tools\upx-4.2.4-win64\upx.exe&quot; --force --best --ultra-brute --all-filters &quot;%25path%25&quot;&#xD;&#xA;" />
-  </Target>
 </Project>
