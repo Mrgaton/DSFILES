@@ -1,7 +1,5 @@
 ﻿using DSFiles_Client.Properties;
-using Microsoft.VisualBasic.ApplicationServices;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace DSFiles_Client
 {
@@ -17,7 +15,7 @@ namespace DSFiles_Client
 
             if (subKey != null)
             {
-                var derivedKey = HKDF.Expand(HashAlgorithmName.MD5, subKey, 2048);
+                var derivedKey = HKDF.Expand(HashAlgorithmName.MD5, subKey, 4080);
 
                 D(ref TransformedKey, 0, ref derivedKey);
             }
