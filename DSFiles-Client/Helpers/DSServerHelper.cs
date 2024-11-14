@@ -8,7 +8,7 @@ namespace DSFiles_Client.Helpers
     {
         public const string API_ENDPOINT = "https://gato.ovh/df";
 
-        public static async Task AddFile(string fileName, string downloadToken, string removeToken, string jspLink, ulong size)
+        public static async Task AddFile(string fileName, string downloadToken, string removeToken, string jspLink)
         {
             using (var req = new HttpRequestMessage(HttpMethod.Post, API_ENDPOINT + "/file"))
             {
@@ -17,8 +17,7 @@ namespace DSFiles_Client.Helpers
                     { "name", fileName },
                     { "download_token", downloadToken },
                     { "remove_token", removeToken },
-                    { "jspaste", jspLink },
-                    { "size", size },
+                    { "jspaste", jspLink }
                 }), Encoding.UTF8, "application/json");
 
                 req.Headers.TryAddWithoutValidation("Cookie", $"token={Program.API_TOKEN}");
