@@ -1,14 +1,17 @@
-﻿using System.Net.WebSockets;
+﻿using System.IO.Hashing;
+using System.Net.WebSockets;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace DSFiles_Server.Routes
 {
     internal class WebSocketHandler
     {
-        private static Dictionary<string, List<WebSocket>> clients = new();
+        private static Dictionary<long, List<WebSocket>> clients = new();
 
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
-            var poolKey = context.RequestUri.PathAndQuery;
+            var poolKey = BitConverter.ToInt64(Crc64.Hash(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)));
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
 
@@ -24,7 +27,7 @@ namespace DSFiles_Server.Routes
             _ = HandleClient(socket, poolKey);
         }
 
-        private static async Task HandleClient(WebSocket socket, string poolKey)
+        private static async Task HandleClient(WebSocket socket, long poolKey)
         {
             try
             {
@@ -69,7 +72,7 @@ namespace DSFiles_Server.Routes
             }
         }
 
-        private static async Task BroadcastMessage(string poolKey, WebSocket sender, WebSocketMessageType type, byte[] message)
+        private static async Task BroadcastMessage(long poolKey, WebSocket sender, WebSocketMessageType type, byte[] message)
         {
             foreach (var client in clients[poolKey])
             {

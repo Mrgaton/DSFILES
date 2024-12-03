@@ -28,7 +28,7 @@ namespace DSFiles_Client
 
                 Directory.SetCurrentDirectory(currentDir);
 
-                string[] paths = [Path.Combine(currentDir, "logs"), Path.Combine(currentDir, "seeds")];
+                string[] paths = [Path.Combine(currentDir, "logs")];
 
                 foreach (var path in paths)
                 {
@@ -72,7 +72,8 @@ namespace DSFiles_Client
 
             return Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url()
                 + ':' + extension
-                + ':' + result.seed.ToBase64Url() + (result.key != null ? '$' + result.key.ToBase64Url() : null) + '/' + result.secret.ToBase64Url()
+                + ':' + result.seed.ToBase64Url() + (result.key != null ? '$' + result.key.ToBase64Url() : null)
+                + '/' + result.secret.ToBase64Url()
                 + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url()
                 + ':' + webHookHelper.token;
         }
@@ -81,7 +82,6 @@ namespace DSFiles_Client
         {
             public string FileName { get; set; }
             public string DownloadToken { get; set; }
-            public string Key { get; set; }
             public string RemoveToken { get; set; }
             public string WebLink { get; set; }
             public string? Shortened { get; set; }
