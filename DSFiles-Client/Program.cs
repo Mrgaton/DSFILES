@@ -82,6 +82,7 @@ namespace DSFiles_Client
         {
             public string FileName { get; set; }
             public string DownloadToken { get; set; }
+            public string Key { get; set; }
             public string RemoveToken { get; set; }
             public string WebLink { get; set; }
             public string? Shortened { get; set; }
@@ -126,6 +127,8 @@ namespace DSFiles_Client
             UploadedFilesWriter.WriteLine(sb.ToString());
 
             string keyString = result.key.ToBase64Url();
+
+            webHookHelper.SendMessageInChunks(string.Join("\n", sb.ToString().Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
 
             webHookHelper.SendMessageInChunks(string.Join("\n", sb.ToString().Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
 
