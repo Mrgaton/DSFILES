@@ -1,16 +1,24 @@
 ﻿using DSFiles_Client.Properties;
+using System.Security.Cryptography;
 
 namespace DSFiles_Client
 {
     public class TransformStream : Stream
     {
-        private static byte[] Key = Resources.bin;
+        private byte[] TransformedKey = Resources.bin;
 
         private readonly Stream _baseStream;
 
-        public TransformStream(Stream baseStream)
+        public TransformStream(Stream baseStream, byte[]? subKey = null)
         {
             _baseStream = baseStream;
+
+            if (subKey != null)
+            {
+                var derivedKey = HKDF.Expand(HashAlgorithmName.MD5, subKey, 4080);
+
+                D(ref TransformedKey, 0, ref derivedKey);
+            }
         }
 
         public override bool CanRead => _baseStream.CanRead;
@@ -50,7 +58,7 @@ namespace DSFiles_Client
 
             if (result > 0)
             {
-                D(ref buffer, pos);
+                D(ref buffer, pos, ref TransformedKey);
 
                 this.Position += count;
             }
@@ -62,22 +70,22 @@ namespace DSFiles_Client
 
         public new async Task WriteAsync(byte[] buffer, int offset, int count)
         {
-            D(ref buffer, this.Position);
+            D(ref buffer, this.Position, ref TransformedKey);
 
             this.Position += count;
 
             await _baseStream.WriteAsync(buffer, offset, count);
         }
 
-        public static void D(ref byte[] data, long position)
+        public static void D(ref byte[] data, long position, ref byte[] key)
         {
             for (int i = 0; i < data.Length; i++)
             {
                 long relativeIndex = (position) + i;
 
-                long keyIndex = (relativeIndex % Key.Length);
+                long keyIndex = (relativeIndex % key.Length);
 
-                data[i] ^= Key[keyIndex];
+                data[i] ^= key[keyIndex];
             }
         }
 

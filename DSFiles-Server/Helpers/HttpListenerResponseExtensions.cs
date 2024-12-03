@@ -73,8 +73,9 @@ namespace DSFiles_Server.Helpers
                 return;
             }
 
-            res.Headers.Set(HttpRequestHeader.Warning, data);
+            res.AddHeader("warning", Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
             res.Send(Encoding.UTF8.GetBytes(data));
+            res.Close();
         }
 
         public static void SendCatError(this HttpListenerResponse res, int status)

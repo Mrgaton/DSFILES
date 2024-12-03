@@ -60,6 +60,7 @@ namespace DSFiles_Server
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
             listener.Prefixes.Add("http://*:8080/");
+            listener.Prefixes.Add("http://localhost:9006/");
             listener.Start();
 
             Console.WriteLine("DSFILES listening on 8080...");
@@ -69,7 +70,14 @@ namespace DSFiles_Server
                 HttpListenerContext context = listener.GetContext();
                 //HandleContext(context);
 
-                Task.Factory.StartNew(() => HandleContext(context));
+                if (context.Request.IsWebSocketRequest)
+                {
+                    Task.Factory.StartNew(async () => WebSocketHandler.HandleWebSocket(await context.AcceptWebSocketAsync(null)));
+                }
+                else
+                {
+                    Task.Factory.StartNew(() => HandleContext(context));
+                }
             }
         }
 

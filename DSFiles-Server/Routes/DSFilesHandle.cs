@@ -5,7 +5,6 @@ using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Data;
 using System.Net;
-using System.Net.Mime;
 using System.Text;
 
 namespace DSFiles_Server.Routes
@@ -67,7 +66,10 @@ namespace DSFiles_Server.Routes
 
                 string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
 
-                byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
+                string[] seedData = seedSpltied[seedSpltied.Length - 1].Split('$');
+
+                byte[] seed = Base64Url.FromBase64Url(seedData[0]).Inflate();
+                byte[] key = seedData.Length > 1 ? Base64Url.FromBase64Url(seedData[1]) : null;
 
                 uint relativeLength = BitConverter.ToUInt32(seed, 1);
 
@@ -91,7 +93,9 @@ namespace DSFiles_Server.Routes
                     string extension = fileName.Contains('.') ? Path.GetExtension(fileName).Trim('.') : "";
 
                     res.Send("This seed was made from an old version please go to https://github.com/Mrgaton/DSFILES and download the correct version probably is the oldest one\n\nHere is the compiled seed: " +
+
                         Encoding.UTF8.GetBytes(fileNameWithoutExt).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.Deflate().ToBase64Url());
+
                     return;
                 }
 
@@ -119,11 +123,20 @@ namespace DSFiles_Server.Routes
 
                 //res.Send('[' + string.Join(", ",attachements)+ ']');
 
-                if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase) && ids.Length > 2)
+                if (ids.Length > 2)
                 {
-                    res.ContentType = "text/html; charset=utf-8";
-                    res.SendStatus(200,Properties.Resources.BotsPage);
-                    return;
+                    if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        res.ContentType = "text/html; charset=utf-8";
+                        res.SendStatus(200, Properties.Resources.BotsPage);
+                        return;
+                    }
+
+                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                }
+                else
+                {
+                    res.AddHeader("Cache-Control", "public, max-age=86300");
                 }
 
                 contentTypeProvider.TryGetContentType(fileName, out string? contentType);
@@ -131,15 +144,6 @@ namespace DSFiles_Server.Routes
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
                 res.AddHeader("Accept-Ranges", "bytes");
                 //res.AddHeader("ETAG", etag.ToBase64Url());
-
-                if (ids.Length > 2)
-                {
-                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-                }
-                else
-                {
-                    res.AddHeader("Cache-Control", "public, max-age=86300");
-                }
 
                 if (config.Compression) res.AddHeader("content-encoding", "br");
 
@@ -194,7 +198,7 @@ namespace DSFiles_Server.Routes
                     res.StatusCode = 206;
                     res.OutputStream.Write([], 0, 0);
 
-                    await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk, offset);
+                    await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
 #endif
                     return;
                 }
@@ -211,14 +215,21 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                await SendFullFile(res, attachments, 0);
+                await SendFullFile(res, key, attachments, 0);
             }
             catch (Exception ex)
             {
                 GC.Collect();
 
-                res.Headers.Remove(HttpRequestHeader.CacheControl);
-                res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                try
+                {
+                    res.Headers.Remove(HttpRequestHeader.CacheControl);
+                }
+                catch { }
+                finally
+                {
+                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                }
 
                 Program.WriteException(ref ex);
 
@@ -230,12 +241,12 @@ namespace DSFiles_Server.Routes
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments, int startChunk, int offset = 0)
+        private static async Task SendFullFile(HttpListenerResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
         {
             int part = 0;
             int retry = 0;
 
-            using (TransformStream ts = new TransformStream(res.OutputStream))
+            using (TransformStream ts = new TransformStream(res.OutputStream, key))
             {
                 while (part < attachments.Length)
                 {
