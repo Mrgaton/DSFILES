@@ -130,8 +130,6 @@ namespace DSFiles_Client
 
             webHookHelper.SendMessageInChunks(string.Join("\n", sb.ToString().Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
 
-            webHookHelper.SendMessageInChunks(string.Join("\n", sb.ToString().Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
-
             return upload;
         }
 

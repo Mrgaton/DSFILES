@@ -25,7 +25,6 @@
     <PackageReference Include="Sentry.EntityFramework" Version="4.13.0" />
     <PackageReference Include="SkiaSharp" Version="3.118.0-preview.1.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.118.0-preview.1.2" />
-    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>

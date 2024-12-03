@@ -1,5 +1,4 @@
-﻿using System.IO.Hashing;
-using System.Net.WebSockets;
+﻿using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -11,7 +10,7 @@ namespace DSFiles_Server.Routes
 
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
-            var poolKey = BitConverter.ToInt64(Crc64.Hash(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)));
+            var poolKey = BitConverter.ToInt64(MD5.HashData(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)),0);
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
 
