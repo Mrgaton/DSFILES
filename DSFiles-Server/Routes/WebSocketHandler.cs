@@ -10,7 +10,7 @@ namespace DSFiles_Server.Routes
 
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
-            var poolKey = BitConverter.ToInt64(MD5.HashData(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)),0);
+            var poolKey = BitConverter.ToInt64(MD5.HashData(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)), 0);
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
 

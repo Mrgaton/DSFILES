@@ -90,18 +90,24 @@ namespace DSFiles_Server
 
             res.Headers.Set(HttpResponseHeader.Server, "DSFILES");
 
-            Console.WriteLine($"[{DateTime.Now}] {req.Url.PathAndQuery}");
+            HttpMethod method = new HttpMethod(req.HttpMethod);
+
+            Console.WriteLine($"[{DateTime.Now}] {method} {req.Url.PathAndQuery}");
 
             switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
             {
-                case "f":
-                case "d":
-                case "df":
-                    await DSFilesHandle.HandleFile(req, res);
+                case "df" or "d" or "f":
+                    if (method == HttpMethod.Get)
+                    {
+                        await DSFilesDownloadHandle.HandleFile(req, res);
+                    }
+                    else if (method == HttpMethod.Post)
+                    {
+                        await DSFilesUploadHandle.HandleFile(req, res);
+                    }
                     break;
 
-                case "r":
-                case "rd":
+                case "rd" or "r":
                     await RedirectHandler.HandleRedirect(req, res);
                     break;
 

@@ -9,7 +9,7 @@ using System.Text;
 
 namespace DSFiles_Server.Routes
 {
-    internal class DSFilesHandle
+    internal class DSFilesDownloadHandle
     {
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {
@@ -66,10 +66,7 @@ namespace DSFiles_Server.Routes
 
                 string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
 
-                string[] seedData = seedSpltied[seedSpltied.Length - 1].Split('$');
-
-                byte[] seed = Base64Url.FromBase64Url(seedData[0]).Inflate();
-                byte[] key = seedData.Length > 1 ? Base64Url.FromBase64Url(seedData[1]) : null;
+                byte[] seed = Base64Url.FromBase64Url(seedSpltied[seedSpltied.Length - 1]).Inflate();
 
                 uint relativeLength = BitConverter.ToUInt32(seed, 1);
 
@@ -92,10 +89,8 @@ namespace DSFiles_Server.Routes
 
                     string extension = fileName.Contains('.') ? Path.GetExtension(fileName).Trim('.') : "";
 
-                    res.Send("This seed was made from an old version please go to https://github.com/Mrgaton/DSFILES and download the correct version probably is the oldest one\n\nHere is the compiled seed: " +
-
+                    res.Send("This seed was made from a deprecated version please download the the correct client version, probably it is the oldest one\n\nHere is the compiled seed: " +
                         Encoding.UTF8.GetBytes(fileNameWithoutExt).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.Deflate().ToBase64Url());
-
                     return;
                 }
 
@@ -128,7 +123,7 @@ namespace DSFiles_Server.Routes
                     if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
                     {
                         res.ContentType = "text/html; charset=utf-8";
-                        res.SendStatus(200, Properties.Resources.BotsPage);
+                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage,req.Headers.Get("authority")));
                         return;
                     }
 
@@ -198,7 +193,7 @@ namespace DSFiles_Server.Routes
                     res.StatusCode = 206;
                     res.OutputStream.Write([], 0, 0);
 
-                    await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
+                    await SendFullFile(res, attachments.Skip(chunk).ToArray(), chunk, offset);
 #endif
                     return;
                 }
@@ -215,7 +210,7 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                await SendFullFile(res, key, attachments, 0);
+                await SendFullFile(res, attachments, 0);
             }
             catch (Exception ex)
             {
@@ -241,12 +236,12 @@ namespace DSFiles_Server.Routes
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpListenerResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
+        private static async Task SendFullFile(HttpListenerResponse res, string[] attachments, int startChunk, int offset = 0)
         {
             int part = 0;
             int retry = 0;
 
-            using (TransformStream ts = new TransformStream(res.OutputStream, key))
+            using (TransformStream ts = new TransformStream(res.OutputStream))
             {
                 while (part < attachments.Length)
                 {
