@@ -4,11 +4,11 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DSFiles_Client.Utils
+namespace DSFiles_Shared
 {
     public sealed class WebHookHelper
     {
-        private static HttpClient client = new HttpClient();
+        private HttpClient _client { get; set; }
 
         private static string WebHookUrl = string.Empty;
 
@@ -21,8 +21,10 @@ namespace DSFiles_Client.Utils
         public string? name { get; set; }
         public int type { get; set; }
 
-        public WebHookHelper(ulong webHookId, string token)
+        public WebHookHelper(HttpClient client, ulong webHookId, string token)
         {
+            _client = client;
+
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = $"https://ptb.discord.com/api/webhooks/{webHookId}/{token}").Result)
             {
                 if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
@@ -31,8 +33,10 @@ namespace DSFiles_Client.Utils
             }
         }
 
-        public WebHookHelper(string url)
+        public WebHookHelper(HttpClient client, string url)
         {
+            _client = client;
+
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = url).Result)
             {
                 if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
@@ -84,7 +88,7 @@ namespace DSFiles_Client.Utils
             }
         }
 
-        public async Task<HttpStatusCode> SendMessage(string content) => await SendMessage(content, Application.ProductName);
+        public async Task<HttpStatusCode> SendMessage(string content) => await SendMessage(content, "");
 
         public async Task<HttpStatusCode> SendMessage(string content, string username) => await SendMessage(content, username, "");
 
@@ -101,6 +105,7 @@ namespace DSFiles_Client.Utils
                 if (id <= 0) continue;
 
                 retry:
+
                 Console.WriteLine("Removing message id: " + id);
 
                 var result = RemoveMessage(id).Result;
@@ -177,13 +182,15 @@ namespace DSFiles_Client.Utils
 
         public async Task<string> PostFileToWebhook(MultipartFormDataContent form)
         {
-            using (HttpResponseMessage req = await client.PostAsync(WebHookUrl, form))
+            using (HttpResponseMessage req = await _client.PostAsync(WebHookUrl, form))
             {
-                return await req.Content.ReadAsStringAsync();
+                var response = await req.Content.ReadAsStringAsync();
+
+                return string.IsNullOrEmpty(response) ? req.StatusCode.ToString() : response;
             }
         }
 
-        private static async Task<HttpResponseMessage> MakeRequest(HttpMethod method, string url, string content = null, Dictionary<string, string> headers = null)
+        private async Task<HttpResponseMessage> MakeRequest(HttpMethod method, string url, string content = null, Dictionary<string, string> headers = null)
         {
             using (HttpRequestMessage req = new HttpRequestMessage(method, url))
             {
@@ -195,7 +202,7 @@ namespace DSFiles_Client.Utils
 
                 if (headers != null) foreach (var header in headers) req.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
-                HttpResponseMessage res = await client.SendAsync(req);
+                HttpResponseMessage res = await _client.SendAsync(req);
 
                 if (res.Headers.RetryAfter != null)
                 {

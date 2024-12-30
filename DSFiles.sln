@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles_Client", "DSFiles-C
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles_Server", "DSFiles-Server\DSFiles_Server.csproj", "{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSFiles_Shared", "DSFiles_Shared\DSFiles_Shared.csproj", "{4C450EC0-D624-4926-B852-77839B27CE52}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C450EC0-D624-4926-B852-77839B27CE52}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C450EC0-D624-4926-B852-77839B27CE52}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C450EC0-D624-4926-B852-77839B27CE52}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C450EC0-D624-4926-B852-77839B27CE52}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

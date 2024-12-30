@@ -1,11 +1,11 @@
-﻿using DSFiles_Server.Properties;
+﻿using DSFiles_Shared.Properties;
 using System.Security.Cryptography;
 
-namespace DSFiles_Client
+namespace DSFiles_Shared
 {
     public class TransformStream : Stream
     {
-        private byte[] TransformedKey = Resources.bin;
+        private byte[] TransformationKey = Resources.bin;
 
         private readonly Stream _baseStream;
 
@@ -17,7 +17,7 @@ namespace DSFiles_Client
             {
                 var derivedKey = HKDF.Expand(HashAlgorithmName.MD5, subKey, 4080);
 
-                D(ref TransformedKey, 0, ref derivedKey);
+                D(ref TransformationKey, 0, ref derivedKey);
             }
         }
 
@@ -48,15 +48,29 @@ namespace DSFiles_Client
             _baseStream.SetLength(value);
         }
 
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count) => throw new NotImplementedException();
+        public new async Task<int> ReadAsync(byte[] buffer, int offset, int count)
+        {
+            long pos = this.Position;
+
+            int result = await _baseStream.ReadAsync(buffer, offset, count);
+
+            if (result > 0)
+            {
+                D(ref buffer, pos, ref TransformationKey);
+
+                this.Position += count;
+            }
+
+            return result;
+        }
 
         public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
         public new async Task WriteAsync(byte[] buffer, int offset, int count)
         {
-            D(ref buffer, this.Position, ref TransformedKey);
+            D(ref buffer, this.Position, ref TransformationKey);
 
             this.Position += count;
 

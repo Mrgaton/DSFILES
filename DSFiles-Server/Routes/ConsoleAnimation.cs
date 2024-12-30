@@ -17,11 +17,12 @@ namespace DSFiles_Server.Routes
 
         private sealed class ConversorConfig
         {
-            public int Width { get; set; }
-            public int Height { get; set; }
+            public string Name { get; set; }
             public bool Invert { get; set; }
             public bool HDR { get; set; }
             public bool Pixel { get; set; }
+            public int Width { get; set; }
+            public int Height { get; set; }
             public int FpsDivisor { get; set; }
             public int WidthDivisor { get; set; }
             public int HeightDivisor { get; set; }
@@ -33,11 +34,37 @@ namespace DSFiles_Server.Routes
             { }
         }
 
+        private static void HandleInformation(HttpListenerRequest req, HttpListenerResponse res)
+        {
+            res.Send(@"Information of ConsoleAnimation endpoint query params:
+
+link | url = the url of the media you want to convert to ascii
+
+offset | o = the offset on wich the frames of the animated image is transmited in ms (example 30 or -60)
+
+i = inverts the colors?
+
+hdr = Some weird algorithm to maximize color
+
+pixel = instead of characters just paints the whole char
+
+fps = the amount of fps to divide
+
+wd = (width divisor) the amount of pixels in the width row that skips to give a smaller charmap to the console
+
+hd = (height divisor) the amount of pixels in the height row that skips to give a smaller charmap to the console
+
+mccn | compression = the amount of rgb value that have to change to change the color for the next pixel for the console
+
+
+");
+        }
+
         public static void HandleAnimation(HttpListenerRequest req, HttpListenerResponse res)
         {
             if (req.Headers.Get("accept").Contains("html", StringComparison.InvariantCultureIgnoreCase))
             {
-                res.SendCatError(418);
+                HandleInformation(req, res);
                 return;
             }
 
@@ -67,31 +94,67 @@ namespace DSFiles_Server.Routes
             gifNameByte[0] = (byte)char.ToUpper((char)gifNameByte[0]);
             gifName = Encoding.UTF8.GetString(gifNameByte);
 
-            int timeOffset = int.Parse(req.QueryString["offset"] ?? req.QueryString["of"] ?? req.QueryString["o"] ?? "5");
+            int timeOffset = int.Parse(req.QueryString["offset"] ?? req.QueryString["of"] ?? req.QueryString["o"] ?? "-8");
 
-            Dictionary<int, string> framesBuffer = new Dictionary<int, string>();
+            var config = new ConversorConfig()
+            {
+                Name = gifName,
 
-            int[] frameDuration = [];
+                Invert = bool.TryParse(req.QueryString["i"], out var invert) && invert,
+                HDR = bool.TryParse(req.QueryString["hdr"], out var hdr) && hdr,
+                Pixel = bool.TryParse(req.QueryString["pixel"] ?? req.QueryString["p"], out var pixel) && pixel,
 
-            using (var ms = new MemoryStream(Program.client.GetByteArrayAsync(url).Result))
-            using (var codec = SKCodec.Create(ms))
+                FpsDivisor = Math.Max(1, int.Parse(req.QueryString["fps"] ?? req.QueryString["fd"] ?? req.QueryString["f"] ?? "1")),
+                WidthDivisor = Math.Max(1, int.Parse(req.QueryString["wd"] ?? req.QueryString["w"] ?? "1")),
+                HeightDivisor = Math.Max(1, int.Parse(req.QueryString["hd"] ?? req.QueryString["h"] ?? "1") * 2),
+                MinColorChangeNeeded = Math.Max(1, int.Parse(req.QueryString["mccn"] ?? req.QueryString["compression"] ?? req.QueryString["c"] ?? req.QueryString["comp"] ?? "75"))
+            };
+
+            Stopwatch sw = new Stopwatch();
+
+            sw.Start();
+
+            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result),res.OutputStream);
+
+            while (true)
+            {
+                for (int i = 0; i < rawFrames.Length; i++)
+                {
+                    var data = rawFrames[i];
+
+                    res.OutputStream.Write(data,0,data.Length);
+
+                    if (rawFrames.Length == 1)
+                    {
+                        while (true)
+                        {
+                            res.OutputStream.Write(ANSIHelper.SetPosition(0, 0));
+
+                            Thread.Sleep(5 * 1000);
+                        }
+                    }
+
+                    int timeToSleep = (int)(frameDuration[i] - sw.ElapsedMilliseconds) + timeOffset;
+
+                    if (timeToSleep > 0)
+                    {
+                        Thread.Sleep(Math.Abs(timeToSleep));
+                        Console.WriteLine("Sleeping " + timeToSleep);
+                    }
+
+                    sw.Restart();
+                }
+            }
+        }
+
+        private static (int[] framesDurration,byte[][] frames) EncodeFrames(ConversorConfig config, MemoryStream stream, Stream compilationInfo)
+        {
+            using (var codec = SKCodec.Create(stream))
             {
                 var info = codec.Info;
 
-                var config = new ConversorConfig()
-                {
-                    Invert = bool.TryParse(req.QueryString["i"], out var invert) && invert,
-                    HDR = bool.TryParse(req.QueryString["hdr"], out var hdr) && hdr,
-                    Pixel = bool.TryParse(req.QueryString["pixel"] ?? req.QueryString["p"], out var pixel) && pixel,
-
-                    Width = info.Width,
-                    Height = info.Height,
-
-                    FpsDivisor = Math.Max(1, int.Parse(req.QueryString["fps"] ?? req.QueryString["fd"] ?? req.QueryString["f"] ?? "1")),
-                    WidthDivisor = Math.Max(1, int.Parse(req.QueryString["wd"] ?? req.QueryString["w"] ?? "1")),
-                    HeightDivisor = Math.Max(1, int.Parse(req.QueryString["hd"] ?? req.QueryString["h"] ?? "1") * 2),
-                    MinColorChangeNeeded = Math.Max(1, int.Parse(req.QueryString["mccn"] ?? req.QueryString["compression"] ?? req.QueryString["c"] ?? req.QueryString["comp"] ?? "75"))
-                };
+                int[] frameDuration = [];
+                byte[][] rawFrames = new byte[1][];
 
                 StringBuilder sb = new StringBuilder();
 
@@ -99,25 +162,29 @@ namespace DSFiles_Server.Routes
 
                 sb.Append(ANSIHelper.ClearScreen);
                 sb.Append(ANSIHelper.SetTitle("Wait while we compile the gif"));
-                sb.Append(ANSIHelper.SetSize(transformedHeight + 2, transformedWidth));
+                sb.Append(ANSIHelper.SetSize(transformedHeight + 2, transformedWidth + 1));
                 sb.Append(ANSIHelper.HideCursor);
 
-                sb.Append(ANSIHelper.SetTitle(gifName + ' ' + transformedWidth + 'x' + (info.Height / (config.HeightDivisor / 2))));
+                sb.Append(ANSIHelper.SetTitle(config.Name + ' ' + transformedWidth + 'x' + (info.Height / (config.HeightDivisor / 2))));
 
-                res.OutputStream.Write(ref sb);
+                compilationInfo.Write(ref sb);
 
                 if (codec.FrameCount > 0)
                 {
                     frameDuration = new int[codec.FrameCount];
+                    rawFrames = new byte[codec.FrameCount][];
 
                     int frames = codec.FrameCount / config.FpsDivisor;
 
                     for (int i = 0; i < frames; i++)
                     {
-                        res.OutputStream.Write(ANSIHelper.SetPosition(0, 0) + "Please wait while we compile the gif " + i + '/' + frames + ' ' + framesBuffer.Sum(c => c.Value.Length) + " chars");
+                        compilationInfo.Write(ANSIHelper.SetPosition(0, 0) + "Please wait while we compile the gif " + i + '/' + frames + ' ' + rawFrames.Sum(c => c != null ? c.Length : 0) + " chars");
 
                         sb.Clear();
                         sb.Append(ANSIHelper.SetPosition(0, 0));
+
+                        config.Width = info.Width;
+                        config.Height = info.Height;
 
                         var bitmap = new SKBitmap(info.Width, info.Height);
                         var result = codec.GetPixels(bitmap.Info, bitmap.GetPixels(), new SKCodecOptions(i * config.FpsDivisor));
@@ -129,7 +196,7 @@ namespace DSFiles_Server.Routes
                         {
                             byte[] rgbValues = bitmap.Bytes;
 
-                            RenderFrame(ref rgbValues, ref sb, config);
+                            RenderFrame(ref rgbValues, ref sb, ref config);
                         }
 
                         //Console.WriteLine(sb.ToString());
@@ -148,10 +215,9 @@ namespace DSFiles_Server.Routes
                             acumulatedDelay += frameInfo.Duration;
                         }
 
-                        sb.Append(ANSIHelper.SetTitle(gifName + " F:" + i + '/' + frames + " C:" + sb.Length + " T:" + acumulatedDelay));
-
+                        sb.Append(ANSIHelper.SetTitle(config.Name + " F:" + i + '/' + frames + " C:" + sb.Length + " T:" + acumulatedDelay));
                         frameDuration[i] = acumulatedDelay;
-                        framesBuffer.Add(i, sb.ToString());
+                        rawFrames[i] = Encoding.UTF8.GetBytes(sb.ToString());
                     }
                 }
                 else
@@ -165,48 +231,15 @@ namespace DSFiles_Server.Routes
 
                         var bytes = bitmap.Bytes;
 
-                        RenderFrame(ref bytes, ref sb, config);
-                        framesBuffer.Add(0, sb.ToString());
+                        RenderFrame(ref bytes, ref sb, ref config);
+                        rawFrames[0] = Encoding.UTF8.GetBytes(sb.ToString());
                     }
                 }
-            }
-
-            Stopwatch sw = new Stopwatch();
-
-            sw.Start();
-
-            while (true)
-            {
-                for (int i = 0; i < framesBuffer.Count; i++)
-                {
-                    var data = framesBuffer[i];
-
-                    res.OutputStream.Write(data);
-
-                    if (framesBuffer.Count == 1)
-                    {
-                        while (true)
-                        {
-                            res.OutputStream.Write(ANSIHelper.SetPosition(0, 0));
-
-                            Thread.Sleep(5 * 1000);
-                        }
-                    }
-
-                    int timeToSleep = (int)(frameDuration[i] - sw.ElapsedMilliseconds) - timeOffset;
-
-                    if (timeToSleep > 0)
-                    {
-                        Thread.Sleep(Math.Abs(timeToSleep));
-                        Console.WriteLine("Sleeping " + timeToSleep);
-                    }
-
-                    sw.Restart();
-                }
+                return (frameDuration, rawFrames);
             }
         }
 
-        private static void RenderFrame(ref byte[] buffer, ref StringBuilder sb, ConversorConfig config)
+        private static void RenderFrame(ref byte[] buffer, ref StringBuilder sb, ref ConversorConfig config)
         {
             byte lastR = 0, lastG = 0, lastB = 0, lastA = 0;
 

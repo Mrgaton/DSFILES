@@ -1,10 +1,12 @@
 ﻿#define RANGE_FULLFILE
 
-using DSFiles_Client;
 using DSFiles_Server.Helpers;
+using DSFiles_Shared;
 using Microsoft.AspNetCore.StaticFiles;
+using System.Buffers;
 using System.Data;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 
 namespace DSFiles_Server.Routes
@@ -13,15 +15,15 @@ namespace DSFiles_Server.Routes
     {
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {
-            {".mkv","video/matroska" },
-            {".mk3d","video/matroska-3d" },
-            {".mka","audio/matroska" },
+            {"mkv","video/matroska" },
+            {"mk3d","video/matroska-3d" },
+            {"mka","audio/matroska" },
 
-            {".ogg","audio/ogg" },
-            {".flac","audio/flac" },
-            {".mov","video/quicktime" },
-            {".webm","audio/webm" },
-            {".adts","audio/aac" }
+            {"ogg","audio/ogg" },
+            {"flac","audio/flac" },
+            {"mov","video/quicktime" },
+            {"webm","audio/webm" },
+            {"adts","audio/aac" }
         };
 
         private static FileExtensionContentTypeProvider contentTypeProvider = CreateProvider();
@@ -32,13 +34,15 @@ namespace DSFiles_Server.Routes
 
             foreach (var type in contentTypes)
             {
-                if (!provider.Mappings.ContainsKey(type.Key))
+                var key = type.Key[0] == '.' ? type.Key : '.' + type.Key;
+
+                if (!provider.Mappings.ContainsKey(key))
                 {
-                    provider.Mappings.Add(type.Key, type.Value);
+                    provider.Mappings.Add(key, type.Value);
                 }
                 else
                 {
-                    provider.Mappings[type.Key] = type.Value;
+                    provider.Mappings[key] = type.Value;
                 }
 
                 //Console.WriteLine(type.Key + " | " + type.Value);
@@ -60,7 +64,7 @@ namespace DSFiles_Server.Routes
 
                 if (seedSpltied.Length! > 2 && urlSplited.Length != 3)
                 {
-                    res.SendStatus(400);
+                    res.SendStatus(400); //Seed invalida
                     return;
                 }
 
@@ -68,7 +72,7 @@ namespace DSFiles_Server.Routes
 
                 string[] seedData = seedSpltied[seedSpltied.Length - 1].Split('$');
                 byte[] seed = Base64Url.FromBase64Url(seedData[0]).Inflate();
-                byte[] key = seedData.Length > 1 ? Base64Url.FromBase64Url(seedData[1]) : null;
+                byte[]? key = seedData.Length > 1 ? Base64Url.FromBase64Url(seedData[1]) : null;
 
                 uint relativeLength = BitConverter.ToUInt32(seed, 1);
 
@@ -102,7 +106,7 @@ namespace DSFiles_Server.Routes
 
                 if (ids.Length <= 0)
                 {
-                    res.SendCatError(406);
+                    res.SendCatError(406); //IDs nulas???
 
                     return;
                 }
@@ -125,7 +129,7 @@ namespace DSFiles_Server.Routes
                     if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
                     {
                         res.ContentType = "text/html; charset=utf-8";
-                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage,req.Headers.Get("authority")));
+                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
                         return;
                     }
 
@@ -169,22 +173,6 @@ namespace DSFiles_Server.Routes
                     long rangeNum = long.Parse(string.Join("", range.Where(char.IsNumber)));
                     int chunk = (int)(rangeNum / CHUNK_SIZE);
 
-#if !RANGE_FULLFILE
-                    long start = chunk * CHUNK_SIZE;
-                    long end = start + CHUNK_SIZE - 1;
-
-                    if (end + 1 + CHUNK_SIZE > (long)contentLength)
-                    {
-                        end = (long)contentLength - 1;
-                    }
-
-                    res.ContentLength64 = end - start + 1;
-                    res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
-                    res.StatusCode = 206;
-                    await res.OutputStream.FlushAsync();
-
-                    await SendChunk(res, attachments, chunk);
-#else
                     var offset = (int)(rangeNum % CHUNK_SIZE);
 
                     long start = (chunk * CHUNK_SIZE) + offset;
@@ -196,7 +184,7 @@ namespace DSFiles_Server.Routes
                     res.OutputStream.Write([], 0, 0);
 
                     await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
-#endif
+
                     return;
                 }
 
@@ -209,6 +197,7 @@ namespace DSFiles_Server.Routes
                 if (!res.OutputStream.CanWrite)
                 {
                     res.Close();
+
                     return;
                 }
 
@@ -240,8 +229,7 @@ namespace DSFiles_Server.Routes
 
         private static async Task SendFullFile(HttpListenerResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
         {
-            int part = 0;
-            int retry = 0;
+            int part = 0, retry = 0;
 
             using (TransformStream ts = new TransformStream(res.OutputStream, key))
             {
@@ -270,7 +258,7 @@ namespace DSFiles_Server.Routes
                             {
                                 if (offset != 0 && e == 0)
                                 {
-                                    request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, null);
+                                    request.Headers.Range = new RangeHeaderValue(offset, null);
                                 }
 
                                 using (var response = await Program.client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
@@ -291,7 +279,7 @@ namespace DSFiles_Server.Routes
 
                                     using (var dataStream = await response.Content.ReadAsStreamAsync())
                                     {
-                                        byte[] buffer = new byte[1 * 1024 / 2 * 1024];
+                                        byte[] buffer = new byte[81920];
 
                                         int bytesRead;
 

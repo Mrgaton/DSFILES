@@ -1,6 +1,5 @@
-﻿using DSFiles;
-using DSFiles_Client.Helpers;
-using DSFiles_Client.Utils;
+﻿using DSFiles_Client.Helpers;
+using DSFiles_Shared;
 using JSPasteNet;
 using Microsoft.Win32;
 using System.Diagnostics;
@@ -10,7 +9,6 @@ using System.Security;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
-using System.Web;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 using File = System.IO.File;
 
@@ -24,7 +22,7 @@ namespace DSFiles_Client
         {
             try
             {
-                string currentDir = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
+                string? currentDir = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
 
                 Directory.SetCurrentDirectory(currentDir);
 
@@ -46,8 +44,6 @@ namespace DSFiles_Client
 
         private const string WebHookFileName = "logs\\webHook.dat";
 
-        public const string UnsendedIds = "logs\\missing.dat";
-
         private const string UploadedFiles = "logs\\uploaded.log";
 
         private const string Debug = "logs\\debug.log";
@@ -62,98 +58,13 @@ namespace DSFiles_Client
             AutomaticDecompression = DecompressionMethods.All,
             AllowAutoRedirect = true,
             SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
-            CookieContainer = new CookieContainer()
-        });
-
-        private static string FileSeedToString(string fileName, (byte[] seed, byte[]? key, byte[] secret) result, WebHookHelper webHookHelper)
+            CookieContainer = new CookieContainer(),
+        })
         {
-            string extension = Path.GetExtension(fileName).TrimStart('.');
-            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-
-            return Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url()
-                + ':' + extension
-                + ':' + result.seed.ToBase64Url() + (result.key != null ? '$' + result.key.ToBase64Url() : null)
-                + '/' + result.secret.ToBase64Url()
-                + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url()
-                + ':' + webHookHelper.token;
-        }
-
-        private class Upload
-        {
-            public string FileName { get; set; }
-            public string DownloadToken { get; set; }
-            public string Key { get; set; }
-            public string RemoveToken { get; set; }
-            public string WebLink { get; set; }
-            public string? Shortened { get; set; }
-
-            public Upload()
-            { }
-        }
-
-        private static Upload WriteUploaded(string fileName, (byte[] seed, byte[] key, byte[] secret) result, WebHookHelper webHookHelper)
-        {
-            var fileSeed = FileSeedToString(fileName, result, webHookHelper);
-            var seedSplited = fileSeed.Split('/');
-
-            var upload = new Upload()
-            {
-                FileName = fileName,
-                DownloadToken = seedSplited[0],
-                RemoveToken = seedSplited.Last(),
-                WebLink = $"https://df.gato.ovh/d/{seedSplited[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}",
-            };
-
-            StringBuilder sb = new StringBuilder();
-
-            sb.AppendLine($"FileName: `{fileName}`");
-            sb.AppendLine($"DownloadToken: `{upload.DownloadToken}`");
-            sb.AppendLine($"RemoveToken: `{upload.RemoveToken}`");
-
-            upload.Shortened = SendJspaste(fileSeed);
-
-            sb.AppendLine($"Shortened: `{upload.Shortened}`");
-            sb.AppendLine($"`WebLink:` {upload.WebLink}");
-
-            if (!string.IsNullOrEmpty(API_TOKEN))
-            {
-                DSServerHelper.AddFile(fileName,
-                    seedSplited[0].Split(':').Last(),
-                    upload.RemoveToken,
-                    upload.Shortened
-                   ).GetAwaiter().GetResult();
-            }
-
-            UploadedFilesWriter.WriteLine(sb.ToString());
-
-            string keyString = result.key.ToBase64Url();
-
-            webHookHelper.SendMessageInChunks(string.Join("\n", sb.ToString().Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
-
-            return upload;
-        }
-
-        private static string SendJspaste(string data)
-        {
-            var version = Assembly.GetEntryAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion;
-
-            try
-            {
-                return "jsp:/" + JSPasteClient.Publish($"#DSFILES {version}\n\n" + data, new DocumentSettings()
-                {
-                    LifeTime = TimeSpan.MaxValue,
-                    KeyLength = 4,
-                    Password = "hola",
-                    Secret = "acrostico"
-                }).Result.Key;
-            }
-            catch (Exception ex)
-            {
-                WriteException(ref ex);
-            }
-
-            return data;
-        }
+            Timeout = TimeSpan.FromSeconds(599),
+            DefaultRequestVersion = HttpVersion.Version30,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+        };
 
         private static string GetFromJspaste(string data)
         {
@@ -188,7 +99,7 @@ namespace DSFiles_Client
             int level = 9;
             int wordSize = 192;
 
-            var freeMb = (StreamCompression.AvailableMemory / 1000 / 1000) - 512 - (ulong)wordSize;
+            var freeMb = (ClientHelper.GetAvilableMemory() / 1000 / 1000) - 512 - (ulong)wordSize;
             int dictSize = Math.Max(64, (int)freeMb / processors / 5);
 
             switch (compressionLevel)
@@ -383,7 +294,7 @@ namespace DSFiles_Client
 
             try
             {
-                webHookHelper = new WebHookHelper(File.ReadAllText(WebHookFileName));
+                webHookHelper = new WebHookHelper(client, File.ReadAllText(WebHookFileName));
             }
             catch { }
 
@@ -391,59 +302,71 @@ namespace DSFiles_Client
 
             if (args.Length > 1)
             {
-                if (args[0].Equals("delete", StringComparison.InvariantCultureIgnoreCase))
+                string[] splited;
+
+                switch (args[0].ToLower())
                 {
-                    string data = args[1].Split('/').Last();
+                    case "-delete":
+                        string data = args[1].Split('/').Last();
 
-                    string[] splited = data.Split(':');
+                        splited = data.Split(':');
 
-                    webHookHelper = new WebHookHelper(BitConverter.ToUInt64(splited[1].FromBase64Url()), splited[2]);
+                        webHookHelper = new WebHookHelper(client, BitConverter.ToUInt64(splited[1].FromBase64Url()), splited[2]);
 
-                    ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url().Inflate());
+                        ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url().Inflate());
 
-                    Console.WriteLine("Removing file chunks (" + ids.Length + ")");
+                        Console.WriteLine("Removing file chunks (" + ids.Length + ")");
 
-                    webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
+                        webHookHelper.RemoveMessages(ids).GetAwaiter().GetResult();
 
-                    if (args.Length > 2)
-                    {
-                        DSServerHelper.RemoveFile(args[2]).GetAwaiter().GetResult();
-                    }
+                        if (args.Length > 2)
+                        {
+                            DSServerHelper.RemoveFile(args[2]).GetAwaiter().GetResult();
+                        }
 
-                    Thread.Sleep(2000);
-                    return;
-                }
-                else if (args[0].Equals("download", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    using (FileStream fs = File.Open(args[2], FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
-                    {
-                        string[] splited = args[1].Split('/')[0].Split(':').Last().Split('$');
+                        Thread.Sleep(2000);
+                        return;
 
-                        DiscordFilesSpliter.Decode(splited[0].FromBase64Url(), (splited.Length > 1 ? splited[1].FromBase64Url() : null), fs).GetAwaiter().GetResult();
-                    }
+                    case "-downnload":
+                        using (FileStream fs = File.Open(args[2], FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+                        {
+                            splited = args[1].Split('/')[0].Split(':').Last().Split('$');
 
-                    return;
-                }
-                else if (args[0].Equals("upload", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    using (FileStream fs = File.Open(args[1], FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
-                    {
-                        var result = DiscordFilesSpliter.Encode(webHookHelper, fs).GetAwaiter().GetResult();
+                            DiscordFilesSpliter.Decode(splited[0].FromBase64Url(), (splited.Length > 1 ? splited[1].FromBase64Url() : null), fs).GetAwaiter().GetResult();
+                        }
+                        return;
 
-                        var uploaded = WriteUploaded(Path.GetFileName(args[1]), result, webHookHelper);
+                    case "-upload":
 
-                        Console.Write("FileSeed: " + uploaded.Shortened ?? uploaded.DownloadToken);
-                    }
+                        using (FileStream fs = File.Open(args[1], FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+                        {
+                            var result = DiscordFilesSpliter.Encode(webHookHelper, Path.GetFileName(args[1]), fs).GetAwaiter().GetResult();
 
-                    return;
+                            UploadedFilesWriter.WriteLine(result.UploadLog);
+
+                            Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
+                        }
+                        return;
+
+                    case "-pipe":
+
+                        using (Stream pipeStream = Console.OpenStandardInput())
+                        {
+                            var result = DiscordFilesSpliter.Encode(webHookHelper, Path.GetFileName(args[1]), pipeStream).GetAwaiter().GetResult();
+
+                            UploadedFilesWriter.WriteLine(result.UploadLog);
+
+                            Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
+                        }
+                        return;
                 }
             }
 
-            if (File.Exists(UnsendedIds))
+            if (File.Exists(DiscordFilesSpliter.UnsendedIds))
             {
                 try
                 {
-                    string unsendedIds = File.ReadAllText(UnsendedIds);
+                    string unsendedIds = File.ReadAllText(DiscordFilesSpliter.UnsendedIds);
 
                     if (!string.IsNullOrWhiteSpace(unsendedIds))
                     {
@@ -451,7 +374,7 @@ namespace DSFiles_Client
 
                         webHookHelper.RemoveMessages(unsendedIds.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray()).GetAwaiter().GetResult();
 
-                        File.WriteAllBytes(UnsendedIds, []);
+                        File.WriteAllBytes(DiscordFilesSpliter.UnsendedIds, []);
 
                         Console.WriteLine();
                     }
@@ -495,13 +418,13 @@ namespace DSFiles_Client
 
                     if (cp.Contains("https://", StringComparison.InvariantCultureIgnoreCase) && cp.Contains("webhook", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        var wh = new WebHookHelper(cp);
+                        var wh = new WebHookHelper(client, cp);
 
                         if (wh.channelId <= 0) throw new Exception("WebHook is not valid");
 
                         File.WriteAllText(WebHookFileName, cp);
 
-                        webHookHelper = new WebHookHelper(cp);
+                        webHookHelper = new WebHookHelper(client, cp);
                     }
                     else
                     {
@@ -529,13 +452,15 @@ namespace DSFiles_Client
                 {
                     string rootPath = ZipCompressor.GetRootPath(args);
 
-                    if (File.Exists(StreamCompression.tempCompressorPath)) File.Delete(StreamCompression.tempCompressorPath);
-
                     Console.WriteLine("Compressing files please wait\n");
 
                     var compressionLevel = DiscordFilesSpliter.ShouldCompress(null, 0, false);
 
-                    SevenZipPaths(StreamCompression.tempCompressorPath, compressionLevel, args);
+                    string archivedPath = Path.GetTempFileName();
+
+                    ClientHelper.RemoveOnBoot(archivedPath);
+
+                    SevenZipPaths(archivedPath, compressionLevel, args);
 
                     filePath = rootPath.Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z";
 
@@ -545,7 +470,7 @@ namespace DSFiles_Client
                     {
                         try
                         {
-                            stream = File.OpenRead(StreamCompression.tempCompressorPath);
+                            stream = File.OpenRead(archivedPath);
                             break;
                         }
                         catch (Exception ex)
@@ -561,22 +486,27 @@ namespace DSFiles_Client
 
                 if (stream == null) throw new ArgumentNullException(nameof(stream));
 
-                var result = DiscordFilesSpliter.EncodeCore(webHookHelper, stream, compLevel).Result;
+                string fileName = Path.GetFileName(filePath);
+
+                var result = DiscordFilesSpliter.EncodeCore(webHookHelper, fileName, stream, compLevel).Result;
 
                 stream.Dispose();
 
-                string fileName = Path.GetFileName(filePath);
+                if (!string.IsNullOrEmpty(API_TOKEN))
+                {
+                    DSServerHelper.AddFile(result.ToJson()).GetAwaiter().GetResult();
+                }
 
-                var uploaded = WriteUploaded(fileName, result, webHookHelper);
+                UploadedFilesWriter.WriteLine(result.UploadLog);
 
                 try
                 {
-                    Clipboard.SetText(uploaded.WebLink);
+                    Clipboard.SetText(result.WebLink);
                 }
                 catch { }
 
-                Console.WriteLine("WebLink: " + uploaded.WebLink + '\n');
-                Console.Write("FileSeed: " + uploaded.Shortened);
+                Console.WriteLine("WebLink: " + result.WebLink + '\n');
+                Console.Write("FileSeed: " + result.Shortened);
 
                 Console.ForegroundColor = Console.BackgroundColor;
                 Console.ReadLine();
@@ -587,7 +517,7 @@ namespace DSFiles_Client
             Console.WriteLine();
             Console.Write("Seed:");
 
-            string fileData = Console.ReadLine().Trim();
+            string? fileData = Console.ReadLine().Trim();
 
             if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = GetFromJspaste(fileData); //JSPasteClient.Get(fileData.Split('/').Last()).Result;
 
@@ -598,7 +528,7 @@ namespace DSFiles_Client
             string[] seedSplited = fileDataSplited.Last().Split('$');
 
             byte[] seed = seedSplited[0].FromBase64Url();
-            byte[] key = seedSplited.Length > 1 ? seedSplited[1].FromBase64Url() : null;
+            byte[]? key = seedSplited.Length > 1 ? seedSplited[1].FromBase64Url() : null;
 
             string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
 

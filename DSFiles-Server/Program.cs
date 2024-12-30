@@ -3,7 +3,11 @@ using DSFiles_Server.Routes;
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Security;
+using System.Reflection;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 
 namespace DSFiles_Server
 {
@@ -20,14 +24,33 @@ namespace DSFiles_Server
             DefaultRequestVersion = HttpVersion.Version11,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
-
         private static void Main(string[] args)
         {
+            if (File.Exists(".env"))
+            {
+                foreach (var line in File.ReadAllLines(".env").Select(l => l.Trim()))
+                {
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                        continue;
+
+                    int separatorIndex = line.IndexOf('=');
+
+                    if (separatorIndex == -1)
+                        continue;
+
+                    string key = line.Substring(0, separatorIndex).ToUpper();
+
+                    string value = line.Substring(separatorIndex + 1);
+
+                    Environment.SetEnvironmentVariable(key, value);
+                }
+            }
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 try
                 {
-                    using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\HTTP\Parameters", true))
+                    using (RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\HTTP\Parameters", true))
                     {
                         if (key == null)
                         {
@@ -49,13 +72,16 @@ namespace DSFiles_Server
 
             bool debug = Debugger.IsAttached;
 
-            SentrySdk.Init(o =>
+            if (!debug)
             {
-                o.Dsn = "https://5a58b08aca581b0c7d6b0ef79aedd518@o4507580376219648.ingest.us.sentry.io/4507580379889664";
-                o.Debug = debug;
-                o.TracesSampleRate = 1.0;
-                o.AddEntityFramework();
-            });
+                SentrySdk.Init(o =>
+                {
+                    o.Dsn = "https://5a58b08aca581b0c7d6b0ef79aedd518@o4507580376219648.ingest.us.sentry.io/4507580379889664";
+                    o.Debug = debug;
+                    o.TracesSampleRate = 1.0;
+                    o.AddEntityFramework();
+                });
+            }
 
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
@@ -64,6 +90,20 @@ namespace DSFiles_Server
             listener.Start();
 
             Console.WriteLine("DSFILES listening on 8080...");
+
+            Task.Factory.StartNew(() =>
+            {
+                while(true)
+                {
+                    try
+                    {
+                        Thread.Sleep(1 * 60 * 1000);
+
+                        GC.Collect();
+                    }
+                    catch { }
+                }
+            });
 
             while (true)
             {
@@ -94,55 +134,62 @@ namespace DSFiles_Server
 
             Console.WriteLine($"[{DateTime.Now}] {method} {req.Url.PathAndQuery}");
 
-            switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
-            {
-                case "df" or "d" or "f":
-                    if (method == HttpMethod.Get)
-                    {
-                        await DSFilesDownloadHandle.HandleFile(req, res);
-                    }
-                    else if (method == HttpMethod.Post)
-                    {
-                        await DSFilesUploadHandle.HandleFile(req, res);
-                    }
-                    break;
-
-                case "rd" or "r":
-                    await RedirectHandler.HandleRedirect(req, res);
-                    break;
-
-                case "rick":
-                    res.Redirect("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-                    res.Close();
-                    break;
-
-                case "download":
-                    SpeedTest.HandleDownload(req, res);
-                    break;
-
-                case "upload":
-                    SpeedTest.HandleUpload(req, res);
-                    break;
-
-                case "animate":
-                    ConsoleAnimation.HandleAnimation(req, res);
-                    break;
-
-                case "favicon.ico":
-                    res.SendStatus(404);
-                    return;
-
-                default:
-                    res.SendCatError(404);
-                    //res.Send("Te perdiste o que señor patata");
-                    break;
-            }
-
             try
             {
+                switch (req.Url.LocalPath.ToLowerInvariant().Split('/')[1])
+                {
+                    case "df" or "d" or "f":
+                        if (method == HttpMethod.Get)
+                        {
+                            await DSFilesDownloadHandle.HandleFile(req, res);
+                        }
+                        else if (method == HttpMethod.Post)
+                        {
+                            await DSFilesUploadHandle.HandleFile(req, res);
+                        }
+                        break;
+
+                    case "rd" or "r":
+                        await RedirectHandler.HandleRedirect(req, res);
+                        break;
+
+                    case "rick":
+                        res.Redirect("https://youtu.be/dQw4w9WgXcQ");
+                        res.Close();
+                        break;
+
+                    case "download":
+                        SpeedTest.HandleDownload(req, res);
+                        break;
+
+                    case "upload":
+                        SpeedTest.HandleUpload(req, res);
+                        break;
+
+                    case "animate":
+                        ConsoleAnimation.HandleAnimation(req, res);
+                        break;
+                    case "cert" or "certs":
+                        CertificatesHandler.HandleCertificate(req, res);
+                        break;
+
+                    case "favicon.ico":
+                        res.SendStatus(404);
+                        return;
+
+                    default:
+                        res.SendCatError(404);
+                        //res.Send("Te perdiste o que señor patata");
+                        break;
+                }
+
                 res.OutputStream.Close();
             }
             catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                res.Send(ex.ToString());
+            }
         }
 
         public static void WriteException(ref Exception ex, params string[] messages)

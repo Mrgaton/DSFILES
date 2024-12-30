@@ -1,15 +1,16 @@
-﻿using System.Text.Json;
+﻿using DSFiles_Shared;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace DSFiles_Server.Helpers
 {
-    internal class DSFilesHelper
+    internal static class DSFilesHelper
     {
-        private static byte[] XorKey = Properties.Resources.bin;
-
         private static readonly Dictionary<string, (string refreshedUrl, DateTime time)> cache = new();
 
-        private static readonly int maxCacheSize = 3 * 1000;
+        private static readonly int maxCacheSize = 12 * 1000;
 
         public static async Task<string[]> RefreshUrls(string[] urls)
         {
@@ -24,9 +25,11 @@ namespace DSFiles_Server.Helpers
                 {
                     var info = cache[url];
 
-                    if ((DateTime.Now - info.time).TotalHours <= 23)
+                    if ((DateTime.Now - info.time).TotalMinutes <= (23 * 60) + 50)
                     {
-                        refreshedUrls.Add(info.refreshedUrl);
+                        refreshedUrls.Add(url + info.refreshedUrl);
+
+                        cache.Remove(url);
                     }
                 }
                 else
@@ -52,7 +55,7 @@ namespace DSFiles_Server.Helpers
 
                     if (refreshedUrl.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        cache[urlsToRefresh[i]] = (refreshedUrl, DateTime.Now);
+                        cache[urlsToRefresh[i]] = ('?' + refreshedUrl.Split('?')[1], DateTime.Now);
                     }
 
                     refreshedUrls.Add(refreshedUrl);
@@ -62,19 +65,23 @@ namespace DSFiles_Server.Helpers
             return refreshedUrls.ToArray();
         }
 
+        private static AuthenticationHeaderValue discordAuth = new AuthenticationHeaderValue("Bot", Environment.GetEnvironmentVariable("TOKEN") ?? throw new ArgumentNullException("Token environment variable is null"));
+
         private static async Task<string[]> RefreshUrlsCore(string[] urls)
         {
             if (urls.Length > 50) throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
 
-            using (HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, "https://gato.ovh/attachments/refresh-urls"))
+            var data = JsonSerializer.Serialize(new { attachment_urls = urls });
+
+            using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Post, "https://canary.discord.com/api/v9/attachments/refresh-urls")
             {
-                var data = JsonSerializer.Serialize(new Dictionary<string, object>() { { "attachment_urls", urls } });
-
-                message.Content = new StringContent(data);
-
-                using (HttpResponseMessage response = await Program.client.SendAsync(message))
+                Headers = { Authorization = discordAuth },
+                Content = new StringContent(data, Encoding.UTF8, "application/json")
+            })
+            {
+                using (HttpResponseMessage res = await Program.client.SendAsync(req))
                 {
-                    var str = await response.Content.ReadAsStringAsync();
+                    var str = await res.Content.ReadAsStringAsync();
 
                     return JsonNode.Parse(str)["refreshed_urls"].AsArray().Select(element => (string)element["refreshed"]).ToArray();
                 }

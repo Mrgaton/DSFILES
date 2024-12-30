@@ -61,27 +61,15 @@ namespace DSFiles_Server.Properties {
         }
         
         /// <summary>
-        ///   Busca un recurso adaptado de tipo System.Byte[].
-        /// </summary>
-        internal static byte[] bin {
-            get {
-                object obj = ResourceManager.GetObject("bin", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
         ///   Busca una cadena traducida similar a &lt;!DOCTYPE html&gt;
         ///&lt;html lang=&quot;en&quot;&gt;
         ///&lt;head&gt;
         ///    &lt;meta charset=&quot;UTF-8&quot;&gt;
         ///    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
         ///    &lt;meta http-equiv=&quot;X-UA-Compatible&quot; content=&quot;ie=edge&quot;&gt;
-        ///
         ///    &lt;meta property=&quot;og:title&quot; content=&quot;DSFILES Server&quot;&gt;
-        ///    &lt;meta property=&quot;og:description&quot; content=&quot;This file is too big to be sended through discord. Please enter the link and check it out!&quot;&gt;
-        ///    &lt;meta property=&quot;og:image&quot; content=&quot;https://example.com/awesome-thumbnail.jpg&quot;&gt;
-        ///    &lt;meta property=&quot;og:u [resto de la cadena truncado]&quot;;.
+        ///    &lt;meta property=&quot;og:description&quot; content=&quot;This file is too big to be sent through discord. Please enter the link and check it out!&quot;&gt;
+        ///    &lt;meta property=&quot;og:image&quot; content=&quot;https://github.com/user-attachments/assets/032219ba-75cd-4c53-b028-4668c2 [resto de la cadena truncado]&quot;;.
         /// </summary>
         internal static string BotsPage {
             get {

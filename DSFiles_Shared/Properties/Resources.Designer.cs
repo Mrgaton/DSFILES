@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace DSFiles_Client.Properties {
+namespace DSFiles_Shared.Properties {
     using System;
     
     
@@ -39,7 +39,7 @@ namespace DSFiles_Client.Properties {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DSFiles_Client.Properties.Resources", typeof(Resources).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DSFiles_Shared.Properties.Resources", typeof(Resources).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -61,12 +61,11 @@ namespace DSFiles_Client.Properties {
         }
         
         /// <summary>
-        ///   Busca un recurso adaptado de tipo System.Byte[].
+        ///   Busca una cadena traducida similar a ff.
         /// </summary>
         internal static byte[] bin {
             get {
-                object obj = ResourceManager.GetObject("bin", resourceCulture);
-                return ((byte[])(obj));
+                return (byte[])ResourceManager.GetObject("bin", resourceCulture);
             }
         }
     }

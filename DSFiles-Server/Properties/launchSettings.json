@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DSFiles_Server": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

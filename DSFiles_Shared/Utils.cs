@@ -1,7 +1,8 @@
 ﻿using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 
-namespace DSFiles_Client.Utils
+namespace DSFiles_Shared
 {
     public static class Base64Url
     {
@@ -72,6 +73,10 @@ namespace DSFiles_Client.Utils
                 return output.ToArray();
             }
         }
+
+        private static SHA1 hash = SHA1.Create();
+
+        public static byte[] Hash(this byte[] data) => hash.ComputeHash(data);
 
         public static byte[] BrotliDecompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {

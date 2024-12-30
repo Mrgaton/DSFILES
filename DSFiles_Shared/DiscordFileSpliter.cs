@@ -1,16 +1,19 @@
-﻿using DSFiles_Client;
-using DSFiles_Client.Utils;
+﻿using JSPasteNet;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Web;
 
-namespace DSFiles
+namespace DSFiles_Shared
 {
     public static class DiscordFilesSpliter
     {
-        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(Program.UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)) { AutoFlush = true }; }
+        public const string UnsendedIds = "Missing.dat";
+        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)) { AutoFlush = true }; }
 
         /*public static IEnumerable<byte[]> SplitByLength(byte[] bytes, int maxLength)
         {
@@ -20,7 +23,8 @@ namespace DSFiles
             }
         }*/
 
-        private const long amountPerFile = (25 * 1024 * 1024) - 256;
+        //private const long amountPerFile = (25 * 1024 * 1024) - 256;
+        private const long amountPerFile = (10 * 1000 * 1000) - 256;
 
         private const int MaxTimeListBuffer = 10;
 
@@ -129,9 +133,9 @@ namespace DSFiles
         ///
         private static Stopwatch sw = new Stopwatch();
 
-        public static async Task<(byte[] seed, byte[] key, byte[] secret)> Encode(WebHookHelper webHook, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression) => await EncodeCore(webHook, stream, compressionLevel);
+        public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, compressionLevel);
 
-        public static async Task<(byte[] seed, byte[] key, byte[] secret)> EncodeCore(WebHookHelper webHook, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
+        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel compressionLevel = CompressionLevel.NoCompression)
         {
             bool compress = compressionLevel != CompressionLevel.NoCompression;
 
@@ -235,7 +239,7 @@ namespace DSFiles
                         }
                         catch (Exception ex)
                         {
-                            Program.QuickWriteException(ref ex, response.ToString());
+                            WriteException(ref ex, (response ?? "Uknown").ToString());
 
                             Thread.Sleep(new Random().Next(0, 1000));
 
@@ -272,7 +276,7 @@ namespace DSFiles
                 }
                 catch { }
 
-                return (seedData.ToArray().Deflate(), key, CompressArray(messagesIdsList.ToArray()).Deflate());
+                return new Upload(name, seedData.ToArray().Deflate(), key, CompressArray(messagesIdsList.ToArray()).Deflate(), ref webHook);
             }
         }
 
@@ -338,7 +342,7 @@ namespace DSFiles
                             }
                             catch (Exception ex)
                             {
-                                Program.QuickWriteException(ref ex);
+                                WriteException(ref ex);
 
                                 Thread.Sleep(2000);
 
@@ -387,147 +391,87 @@ namespace DSFiles
             }
         }
 
-        /*public static class IDsArrayCompressor
+        private static void WriteException(ref Exception ex, params string[] messages)
         {
-            public class DiscordSnowflake
+            var lastColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(string.Join('\n', messages.Where(m => !string.IsNullOrEmpty(m))) + '\n' + ex.ToString() + '\n');
+            Console.ForegroundColor = lastColor;
+        }
+
+        private static string assemblyVersion = Assembly.GetEntryAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion;
+
+        public class Upload
+        {
+            public string FileName { get; set; }
+            public string Seed { get; set; }
+            public string RemoveToken { get; set; }
+            public string WebLink { get; set; }
+            public string? Shortened { get; set; }
+            public string UploadLog { get; set; }
+
+            public string ToJson()
             {
-                private const long DiscordEpoch = 1420070400000;
-
-                public ulong Snowflake { get; set; }
-
-                public ulong Timestamp { get; set; }
-                public uint WorkerId { get; set; }
-                public uint ProcessId { get; set; }
-                public uint Increment { get; set; }
-
-                public DiscordSnowflake(ulong snowflake)
-                {
-                    Snowflake = snowflake;
-
-                    Timestamp = (snowflake >> 22) + DiscordEpoch;
-                    WorkerId = (uint)((snowflake & 0x3E0000) >> 17);
-                    ProcessId = (uint)((snowflake & 0x1F000) >> 12);
-                    Increment = (uint)(snowflake & 0xFFF);
-                }
-
-                public DiscordSnowflake(ulong timestamp, uint workerId, uint processId, uint increment)
-                {
-                    Timestamp = timestamp;
-                    WorkerId = workerId;
-                    ProcessId = processId;
-                    Increment = increment;
-
-                    Snowflake = ((timestamp - DiscordEpoch) << 22) | ((ulong)workerId << 17) | ((ulong)processId << 12) | (ulong)increment;
-                }
+                return '{' + $"\"name\":\"{FileName}\",\"seed\":\"{Seed}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\",\"shortened\":\"{Shortened}\"" + '}';
             }
 
-            private static byte[] ULongToByteArray(ulong value)
+            public Upload(string fileName, byte[] seed, byte[] key, byte[] secret, ref WebHookHelper webHookHelper)
             {
-                var bytes = BitConverter.GetBytes(value);
+                string extension = Path.GetExtension(fileName).TrimStart('.');
+                string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
 
-                if (BitConverter.IsLittleEndian) Array.Reverse(bytes);
+                string fileSeed = Encoding.UTF8.GetBytes(fileNameWithoutExtension).BrotliCompress().ToBase64Url()
+                    + ':' + extension
+                    + ':' + seed.ToBase64Url() + (key != null ? '$' + key.ToBase64Url() : null)
+                    + '/' + secret.ToBase64Url()
+                    + ':' + BitConverter.GetBytes(webHookHelper.id).ToBase64Url()
+                    + ':' + webHookHelper.token;
 
-                return bytes.SkipWhile(b => b == 0).DefaultIfEmpty().ToArray();
+                string[] seedSplited = fileSeed.Split('/');
+
+                this.FileName = fileName;
+                this.Seed = seedSplited[0];
+                this.RemoveToken = seedSplited.Last();
+                this.WebLink = $"https://df.gato.ovh/d/{seedSplited[0].Split(':').Last()}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(fileName))}";
+
+                StringBuilder sb = new StringBuilder();
+
+                sb.AppendLine($"FileName: `{fileName}`");
+                sb.AppendLine($"Seed: `{this.Seed}`");
+                sb.AppendLine($"RemoveToken: `{this.RemoveToken}`");
+
+                this.Shortened = SendJspaste(fileSeed);
+
+                sb.AppendLine($"Shortened: `{this.Shortened}`");
+                sb.AppendLine($"`WebLink:` {this.WebLink}");
+
+                this.UploadLog = sb.ToString();
+
+                string keyString = key.ToBase64Url();
+
+                webHookHelper.SendMessageInChunks(string.Join("\n", this.UploadLog.Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
             }
 
-            private static ulong ByteArrayToULong(byte[] bytes)
+            private static string SendJspaste(string data)
             {
-                if (BitConverter.IsLittleEndian) Array.Reverse(bytes);
-
-                return BitConverter.ToUInt64(bytes.Concat(new byte[8 - bytes.Length]).ToArray(), 0);
-            }
-
-            public static byte[] Compress(List<ulong> array)
-            {
-                Console.WriteLine("[" + string.Join(",", array) + "]");
-
-                using (MemoryStream ms = new MemoryStream())
+                try
                 {
-                    uint workerId = new DiscordSnowflake(array[0]).WorkerId;
-
-                    foreach (var snowflake in array.Select(id => new DiscordSnowflake(id)))
+                    return "jsp:/" + JSPasteClient.Publish($"#DSFILES {assemblyVersion}\n\n" + data, new DocumentSettings()
                     {
-                        Console.WriteLine(snowflake.Timestamp);
-                        Console.WriteLine(snowflake.Increment);
-                        Console.WriteLine(snowflake.WorkerId);
-                        Console.WriteLine(snowflake.ProcessId);
-
-                        Console.WriteLine();
-                    }
-
-                    if (array.Select(id => new DiscordSnowflake(id)).Any(s => s.WorkerId > 15 || s.ProcessId > 15 || s.Increment > 255)) throw new Exception("Worker ID or processId is bigger than 4 bits or increment is bigger than 8");
-
-                    List<DiscordSnowflake> decodedArray = new List<DiscordSnowflake>();
-
-                    foreach (var showflake in array) decodedArray.Add(new DiscordSnowflake(showflake));
-
-                    for (int i = array.Count - 1; i >= 0; i--) if (i - 1 >= 0) decodedArray[i].Timestamp = decodedArray[i].Timestamp - decodedArray[i - 1].Timestamp;
-
-                    ms.WriteByte((byte)workerId);
-
-                    for (int i = 0; i < array.Count; i++)
-                    {
-                        var snowflake = decodedArray[i];
-
-                        Console.WriteLine(snowflake.Timestamp);
-
-                        byte[] timespanArray = ULongToByteArray(snowflake.Timestamp);
-
-                        byte[] metadata = ULongToByteArray(EncodeMetadata(snowflake.ProcessId, snowflake.Increment));
-
-                        byte padding = CombineBits((byte)timespanArray.Length, (byte)metadata.Length);
-
-                        ms.WriteByte(padding);
-                        ms.Write(timespanArray, 0, timespanArray.Length);
-                        ms.Write(metadata, 0, metadata.Length);
-                    }
-
-                    return ms.ToArray();
+                        LifeTime = TimeSpan.MaxValue,
+                        KeyLength = 4,
+                        Password = "hola",
+                        Secret = "acrostico"
+                    }).Result.Key;
                 }
-            }
-
-            public static IEnumerable<ulong> Decompress(byte[] data)
-            {
-                using (MemoryStream ms = new MemoryStream(data))
+                catch (Exception ex)
                 {
-                    uint workerId = (uint)ms.ReadByte();
-
-                    ulong lastValue = 0;
-
-                    while (ms.Position < ms.Length)
-                    {
-                        SplitByte((byte)ms.ReadByte(), out byte timespanLengh, out byte metadataLengh);
-
-                        byte[] timespanBuffer = new byte[timespanLengh];
-                        ms.Read(timespanBuffer, 0, timespanBuffer.Length);
-                        lastValue += ByteArrayToULong(timespanBuffer);
-
-                        byte[] metadataBuffer = new byte[metadataLengh];
-                        ms.Read(metadataBuffer, 0, metadataBuffer.Length);
-
-                        DecodeMetadata((int)ByteArrayToULong(metadataBuffer), out ushort processId, out ushort increment);
-
-                        yield return new DiscordSnowflake(lastValue, workerId, processId, increment).Snowflake;
-                    }
+                    WriteException(ref ex);
                 }
+
+                return data;
             }
-
-            public static ulong EncodeMetadata(uint processId, uint increment) => (processId << 12) | increment;
-
-            public static void DecodeMetadata(int snowflake, out ushort processId, out ushort increment)
-            {
-                processId = (ushort)((snowflake & 0x1F000) >> 12);
-                increment = (ushort)(snowflake & 0xFFF);
-            }
-
-            public static byte CombineBits(byte first, byte second) => (byte)((first << 4) | second);
-
-            public static void SplitByte(byte combined, out byte first, out byte second)
-            {
-                first = (byte)(combined >> 4);
-                second = (byte)(combined & 0x0F);
-            }
-        }*/
+        }
 
         public static byte[] CompressArray(ulong[] array) => ArraySerealizer(array);
 

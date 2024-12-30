@@ -1,4 +1,6 @@
-﻿using System.Net.WebSockets;
+﻿using System.Data;
+using System.Net.WebSockets;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -6,11 +8,11 @@ namespace DSFiles_Server.Routes
 {
     internal class WebSocketHandler
     {
-        private static Dictionary<long, List<WebSocket>> clients = new();
+        private static Dictionary<Int128, List<WebSocket>> clients = new();
 
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
-            var poolKey = BitConverter.ToInt64(MD5.HashData(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)), 0);
+            var poolKey = BitConverter.ToInt128(MD5.HashData(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)), 0);
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
 
@@ -21,12 +23,25 @@ namespace DSFiles_Server.Routes
 
             var socket = context.WebSocket;
 
+            //DisableUtf8Validation(socket);
+
             clients[poolKey].Add(socket);
 
             _ = HandleClient(socket, poolKey);
         }
-
-        private static async Task HandleClient(WebSocket socket, long poolKey)
+        public static void DisableUtf8Validation(WebSocket webSocket)
+        {
+            var validateUtf8Field = webSocket.GetType().GetField("_validateUtf8", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (validateUtf8Field != null)
+            {
+                validateUtf8Field.SetValue(webSocket, false);
+            }
+            else
+            {
+                throw new InvalidOperationException("No se encontró el campo '_validateUtf8'.");
+            }
+        }
+        private static async Task HandleClient(WebSocket socket, Int128 poolKey)
         {
             try
             {
@@ -63,21 +78,23 @@ namespace DSFiles_Server.Routes
                     }
                 }
             }
-            catch (WebSocketException)
+            catch (WebSocketException ex)
             {
                 clients[poolKey].Remove(socket);
 
                 await socket.CloseAsync(WebSocketCloseStatus.InternalServerError, "Error occurred", CancellationToken.None);
+
+                Console.WriteLine("WebSocket Exception: " + ex.ToString());
             }
         }
 
-        private static async Task BroadcastMessage(long poolKey, WebSocket sender, WebSocketMessageType type, byte[] message)
+        private static async Task BroadcastMessage(Int128 poolKey, WebSocket sender, WebSocketMessageType type, byte[] message)
         {
             foreach (var client in clients[poolKey])
             {
-                if (client != sender && client.State == WebSocketState.Open)
+                if (client.State == WebSocketState.Open) // client != sender &&
                 {
-                    await client.SendAsync(new ArraySegment<byte>(message), type, true, CancellationToken.None);
+                    await client.SendAsync(message, type, true, CancellationToken.None);
                 }
             }
         }
