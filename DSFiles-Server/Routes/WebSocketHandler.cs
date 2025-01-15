@@ -1,5 +1,4 @@
-﻿using System.Data;
-using System.Net.WebSockets;
+﻿using System.Net.WebSockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -29,6 +28,7 @@ namespace DSFiles_Server.Routes
 
             _ = HandleClient(socket, poolKey);
         }
+
         public static void DisableUtf8Validation(WebSocket webSocket)
         {
             var validateUtf8Field = webSocket.GetType().GetField("_validateUtf8", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -41,6 +41,7 @@ namespace DSFiles_Server.Routes
                 throw new InvalidOperationException("No se encontró el campo '_validateUtf8'.");
             }
         }
+
         private static async Task HandleClient(WebSocket socket, Int128 poolKey)
         {
             try

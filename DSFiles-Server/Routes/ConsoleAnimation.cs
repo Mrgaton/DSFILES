@@ -56,7 +56,6 @@ hd = (height divisor) the amount of pixels in the height row that skips to give 
 
 mccn | compression = the amount of rgb value that have to change to change the color for the next pixel for the console
 
-
 ");
         }
 
@@ -114,7 +113,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
 
             sw.Start();
 
-            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result),res.OutputStream);
+            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result), res.OutputStream);
 
             while (true)
             {
@@ -122,13 +121,13 @@ mccn | compression = the amount of rgb value that have to change to change the c
                 {
                     var data = rawFrames[i];
 
-                    res.OutputStream.Write(data,0,data.Length);
+                    res.OutputStream.Write(data, 0, data.Length);
 
                     if (rawFrames.Length == 1)
                     {
                         while (true)
                         {
-                            res.OutputStream.Write(ANSIHelper.SetPosition(0, 0));
+                            res.OutputStream.Write(AnsiHelper.SetPosition(0, 0));
 
                             Thread.Sleep(5 * 1000);
                         }
@@ -147,30 +146,33 @@ mccn | compression = the amount of rgb value that have to change to change the c
             }
         }
 
-        private static (int[] framesDurration,byte[][] frames) EncodeFrames(ConversorConfig config, MemoryStream stream, Stream compilationInfo)
+        private static (int[] framesDurration, byte[][] frames) EncodeFrames(ConversorConfig config, MemoryStream stream, Stream compilationInfo)
         {
             using (var codec = SKCodec.Create(stream))
             {
                 var info = codec.Info;
+
+                config.Width = info.Width;
+                config.Height = info.Height;
 
                 int[] frameDuration = [];
                 byte[][] rawFrames = new byte[1][];
 
                 StringBuilder sb = new StringBuilder();
 
-                int transformedWidth = info.Width / config.WidthDivisor, transformedHeight = info.Height / config.HeightDivisor;
-
-                sb.Append(ANSIHelper.ClearScreen);
-                sb.Append(ANSIHelper.SetTitle("Wait while we compile the gif"));
-                sb.Append(ANSIHelper.SetSize(transformedHeight + 2, transformedWidth + 1));
-                sb.Append(ANSIHelper.HideCursor);
-
-                sb.Append(ANSIHelper.SetTitle(config.Name + ' ' + transformedWidth + 'x' + (info.Height / (config.HeightDivisor / 2))));
-
-                compilationInfo.Write(ref sb);
-
                 if (codec.FrameCount > 0)
                 {
+                    int transformedWidth = info.Width / config.WidthDivisor, transformedHeight = info.Height / config.HeightDivisor;
+
+                    sb.Append(AnsiHelper.ClearScreen);
+                    sb.Append(AnsiHelper.SetTitle("Wait while we compile the gif"));
+                    sb.Append(AnsiHelper.SetSize(transformedHeight + 2, transformedWidth + 1));
+                    sb.Append(AnsiHelper.HideCursor);
+
+                    sb.Append(AnsiHelper.SetTitle(config.Name + ' ' + transformedWidth + 'x' + (info.Height / (config.HeightDivisor / 2))));
+
+                    compilationInfo.Write(ref sb);
+
                     frameDuration = new int[codec.FrameCount];
                     rawFrames = new byte[codec.FrameCount][];
 
@@ -178,13 +180,10 @@ mccn | compression = the amount of rgb value that have to change to change the c
 
                     for (int i = 0; i < frames; i++)
                     {
-                        compilationInfo.Write(ANSIHelper.SetPosition(0, 0) + "Please wait while we compile the gif " + i + '/' + frames + ' ' + rawFrames.Sum(c => c != null ? c.Length : 0) + " chars");
+                        compilationInfo.Write(AnsiHelper.SetPosition(0, 0) + "Please wait while we compile the gif " + i + '/' + frames + ' ' + rawFrames.Sum(c => c != null ? c.Length : 0) + " chars");
 
                         sb.Clear();
-                        sb.Append(ANSIHelper.SetPosition(0, 0));
-
-                        config.Width = info.Width;
-                        config.Height = info.Height;
+                        sb.Append(AnsiHelper.SetPosition(0, 0));
 
                         var bitmap = new SKBitmap(info.Width, info.Height);
                         var result = codec.GetPixels(bitmap.Info, bitmap.GetPixels(), new SKCodecOptions(i * config.FpsDivisor));
@@ -215,7 +214,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
                             acumulatedDelay += frameInfo.Duration;
                         }
 
-                        sb.Append(ANSIHelper.SetTitle(config.Name + " F:" + i + '/' + frames + " C:" + sb.Length + " T:" + acumulatedDelay));
+                        sb.Append(AnsiHelper.SetTitle(config.Name + " F:" + i + '/' + frames + " C:" + sb.Length + " T:" + acumulatedDelay));
                         frameDuration[i] = acumulatedDelay;
                         rawFrames[i] = Encoding.UTF8.GetBytes(sb.ToString());
                     }
@@ -232,6 +231,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
                         var bytes = bitmap.Bytes;
 
                         RenderFrame(ref bytes, ref sb, ref config);
+
                         rawFrames[0] = Encoding.UTF8.GetBytes(sb.ToString());
                     }
                 }
@@ -297,11 +297,11 @@ mccn | compression = the amount of rgb value that have to change to change the c
                                 b = (byte)((b * alphaFactor) >> 8);
                             }
 
-                            sb.Append(ANSIHelper.BRGB(predictedChar, r, g, b));
+                            sb.Append(AnsiHelper.BRGB(predictedChar, r, g, b));
                         }
                         else
                         {
-                            sb.Append(ANSIHelper.FRGB(predictedChar, r, g, b));
+                            sb.Append(AnsiHelper.FRGB(predictedChar, r, g, b));
                         }
 
                         lastR = r;
@@ -340,54 +340,6 @@ mccn | compression = the amount of rgb value that have to change to change the c
                 G = (byte)(G * factor);
                 B = (byte)(B * factor);
             }
-        }
-
-        public class ANSIHelper
-        {
-            public static string SetSize(int x, int y) => "\u001b[8;" + x + ";" + y + "t";
-
-            public static string HideScrollbar => "\u001b[?30l";
-            public static string ShowScrollbar => "\u001b[?30h";
-
-            public static string HideCursor => "\u001b[?25l";
-            public static string ShowCursor => "\u001b[?25h";
-
-            public static string ClearScreen => "\u001b[2J";
-            public static string ClearCursorToEnd => "\u001b[0J";
-            public static string ClearCursorToBeginning => "\u001b[1J";
-            public static string ClearLineToEnd => "\u001b[0K";
-            public static string ClearStartToLine => "\u001b[1K";
-            public static string ClearLine => "\u001b[2K";
-
-            public static string MoveCursorUp(int n) => $"\u001b[{n}A";
-
-            public static string MoveCursorDown(int n) => $"\u001b[{n}B";
-
-            public static string MoveCursorForward(int n) => $"\u001b[{n}C";
-
-            public static string MoveCursorBackward(int n) => $"\u001b[{n}D";
-
-            public static string MoveCursorToPosition(int row, int col) => $"\u001b[{row};{col}H";
-
-            public static string SaveCursorPosition => "\u001b[s";
-            public static string RestoreCursorPosition => "\u001b[u";
-
-            public static string ScrollUp(int n) => $"\u001b[{n}S";
-
-            public static string ScrollDown(int n) => $"\u001b[{n}T";
-
-            public static string SetTitle(string title) => "\u001b]0;" + title + "\a";
-
-            public static string SetWindowSize(int x, int y) => "\u001b[8;" + y + ";" + x + "t";
-
-            public static string ResetColor => "\u001b[0m";
-
-            //private static string Pastel(string text, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + text;
-            public static string FRGB(char c, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + c;
-
-            public static string BRGB(char c, int r, int g, int b) => "\u001b[48;2;" + r + ";" + g + ";" + b + "m" + c;
-
-            public static string SetPosition(int row, int collum) => "\u001b[" + row + ";" + collum + "H";
         }
     }
 }

@@ -245,6 +245,34 @@ namespace DSFiles_Client
                 };
             }
 
+            
+
+#if DEBUG
+            if(args.Length ==0)
+            {
+                var df = Assembly.GetCallingAssembly().Location.Replace(".dll",".exe");
+
+                Process du = Process.Start(new ProcessStartInfo()
+                {
+                    FileName = df,
+                    Arguments = "",
+
+                    RedirectStandardInput = true,
+                });
+
+                using(FileStream fs = File.OpenRead("C:\\Users\\Mrgaton\\Downloads\\SideQuest-Setup-0.10.42-x64-win.exe"))
+                {
+                    fs.CopyTo(du.StandardInput.BaseStream);
+                }
+
+                du.StandardInput.BaseStream.Close();
+
+
+                du.WaitForExit();
+                Environment.Exit(0);
+            }
+
+
             if (args.Length > 0 && args[0].StartsWith('/'))
             {
                 if (args[0] == "/updateKey")
@@ -268,6 +296,7 @@ namespace DSFiles_Client
                         }
                     }
                 }
+#endif
 
                 /*if (args[0] == "/train")
                 {
@@ -348,7 +377,7 @@ namespace DSFiles_Client
                         }
                         return;
 
-                    case "-pipe":
+                    case "-pipe": // Ussage -pipe {filename}
 
                         using (Stream pipeStream = Console.OpenStandardInput())
                         {

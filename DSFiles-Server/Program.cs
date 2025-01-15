@@ -3,11 +3,7 @@ using DSFiles_Server.Routes;
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.Net;
-using System.Net.Security;
-using System.Reflection;
-using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
 
 namespace DSFiles_Server
 {
@@ -15,7 +11,7 @@ namespace DSFiles_Server
     {
         public static HttpClient client = new HttpClient(new HttpClientHandler()
         {
-            CookieContainer = new CookieContainer(75),
+            CookieContainer = new CookieContainer(80),
             AllowAutoRedirect = false,
             SslProtocols = System.Security.Authentication.SslProtocols.Tls13 | System.Security.Authentication.SslProtocols.Tls12,
             MaxConnectionsPerServer = short.MaxValue,
@@ -24,6 +20,7 @@ namespace DSFiles_Server
             DefaultRequestVersion = HttpVersion.Version11,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
+
         private static void Main(string[] args)
         {
             if (File.Exists(".env"))
@@ -93,7 +90,7 @@ namespace DSFiles_Server
 
             Task.Factory.StartNew(() =>
             {
-                while(true)
+                while (true)
                 {
                     try
                     {
@@ -153,6 +150,10 @@ namespace DSFiles_Server
                         await RedirectHandler.HandleRedirect(req, res);
                         break;
 
+                    case "generate_204":
+                        res.StatusCode = 204;
+                        break;
+
                     case "rick":
                         res.Redirect("https://youtu.be/dQw4w9WgXcQ");
                         res.Close();
@@ -169,6 +170,7 @@ namespace DSFiles_Server
                     case "animate":
                         ConsoleAnimation.HandleAnimation(req, res);
                         break;
+
                     case "cert" or "certs":
                         CertificatesHandler.HandleCertificate(req, res);
                         break;
@@ -178,7 +180,7 @@ namespace DSFiles_Server
                         return;
 
                     default:
-                        res.SendCatError(404);
+                        res.SendCatError(419);
                         //res.Send("Te perdiste o que señor patata");
                         break;
                 }

@@ -1,12 +1,8 @@
 ﻿using DSFiles_Server.Helpers;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Text.Json;
 
 namespace DSFiles_Server.Routes
@@ -15,7 +11,7 @@ namespace DSFiles_Server.Routes
     {
         public static Dictionary<string, string> certsCache = new();
 
-        public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 3, int delayMilliseconds = 1000)
+        public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 5, int delayMilliseconds = 1000)
         {
             if (string.IsNullOrWhiteSpace(domain))
             {
@@ -46,6 +42,7 @@ namespace DSFiles_Server.Routes
                 catch (Exception ex)
                 {
                     attempt++;
+
                     Console.WriteLine($"Attempt {attempt} failed: {ex.Message}");
 
                     if (attempt >= retries)
@@ -68,14 +65,16 @@ namespace DSFiles_Server.Routes
                 string[] urlSplited = req.Url.AbsolutePath.Split('/');
                 string domain = urlSplited.Last();
 
+                res.Headers.Set("content-type", "application/json");
+
                 if (certsCache.TryGetValue(domain, out string cert))
                 {
+                    res.AddHeader("Cache-Control", "public, max-age=86300");
                     res.Send(cert);
                     return;
                 }
 
                 X509Certificate2 cert2 = GetCertificate(domain);
-                res.Headers.Set("content-type", "application/json");
 
                 var obj = new
                 {
@@ -86,9 +85,8 @@ namespace DSFiles_Server.Routes
                 };
 
                 var json = JsonSerializer.Serialize(obj);
-
                 certsCache.Add(domain, json);
-
+                res.AddHeader("Cache-Control", "public, max-age=86300");
                 res.Send(json);
             }
             catch (Exception ex)

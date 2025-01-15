@@ -8,7 +8,7 @@ WORKDIR /DSFiles-Server
 COPY . ./
 
 # Restore as distinct layers
-RUN dotnet restore
+RUN dotnet restore --no-cache
 
 # Build and publish a release, skipping restore
 RUN dotnet publish -c Release -o out --no-restore

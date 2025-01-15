@@ -10,6 +10,7 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Version>1.0.1</Version>
     <SignAssembly>False</SignAssembly>
+    <StartupObject>DSFiles_Server.Program</StartupObject>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -26,10 +27,10 @@
 
   <ItemGroup>
 	  <FrameworkReference Include="Microsoft.AspNetCore.App" />
-	  <PackageReference Include="Sentry.AspNet" Version="5.0.0" />
-    <PackageReference Include="Sentry.EntityFramework" Version="5.0.0" />
-    <PackageReference Include="SkiaSharp" Version="3.118.0-preview.1.2" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.118.0-preview.1.2" />
+	  <PackageReference Include="Sentry.AspNet" Version="5.0.1" />
+    <PackageReference Include="Sentry.EntityFramework" Version="5.0.1" />
+    <PackageReference Include="SkiaSharp" Version="3.118.0-preview.2.3" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.118.0-preview.2.3" />
   </ItemGroup>
 
   <ItemGroup>
