@@ -1,4 +1,6 @@
 ﻿using DSFiles_Shared;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -8,7 +10,7 @@ namespace DSFiles_Server.Helpers
 {
     internal static class DSFilesHelper
     {
-        private static readonly Dictionary<string, (string refreshedUrl, DateTime time)> cache = new();
+        private static readonly ConcurrentDictionary<string, (string refreshedUrl, DateTime time)> cache = new();
 
         private static readonly int maxCacheSize = 12 * 1000;
 
@@ -29,7 +31,7 @@ namespace DSFiles_Server.Helpers
                     {
                         refreshedUrls.Add(url + info.refreshedUrl);
 
-                        cache.Remove(url);
+                        cache.TryRemove(url,out _);
                     }
                 }
                 else
@@ -48,7 +50,7 @@ namespace DSFiles_Server.Helpers
                     {
                         var oldestKey = cache.Keys.First();
 
-                        cache.Remove(oldestKey);
+                        cache.TryRemove(oldestKey, out _);
                     }
 
                     var refreshedUrl = refreshedUrlsFromApi[i];

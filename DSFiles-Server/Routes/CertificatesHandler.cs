@@ -1,4 +1,5 @@
 ﻿using DSFiles_Server.Helpers;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -9,7 +10,7 @@ namespace DSFiles_Server.Routes
 {
     internal class CertificatesHandler
     {
-        public static Dictionary<string, string> certsCache = new();
+        public static ConcurrentDictionary<string, string> certsCache = new();
 
         public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 5, int delayMilliseconds = 1000)
         {
@@ -85,7 +86,7 @@ namespace DSFiles_Server.Routes
                 };
 
                 var json = JsonSerializer.Serialize(obj);
-                certsCache.Add(domain, json);
+                certsCache.TryAdd(domain, json);
                 res.AddHeader("Cache-Control", "public, max-age=86300");
                 res.Send(json);
             }

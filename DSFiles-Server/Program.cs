@@ -80,6 +80,24 @@ namespace DSFiles_Server
                 });
             }
 
+            /*var builder = WebApplication.CreateBuilder(args);
+
+            builder.WebHost.ConfigureKestrel((context, options) =>
+            {
+                options.ListenAnyIP(8081, listenOptions =>
+                {
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+
+                    //listenOptions.UseHttps();
+                });
+            });
+
+            var app = builder.Build();
+
+            app.MapGet("/", () => "Hello World!");
+
+            Task.Factory.StartNew(() => app.Run());*/
+
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
             listener.Prefixes.Add("http://*:8080/");
@@ -160,6 +178,7 @@ namespace DSFiles_Server
                         break;
 
                     case "download":
+                    case "cdn":
                         SpeedTest.HandleDownload(req, res);
                         break;
 

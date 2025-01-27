@@ -1,4 +1,5 @@
-﻿using System.Net.WebSockets;
+﻿using System.Collections.Concurrent;
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,7 +8,7 @@ namespace DSFiles_Server.Routes
 {
     internal class WebSocketHandler
     {
-        private static Dictionary<Int128, List<WebSocket>> clients = new();
+        private static ConcurrentDictionary<Int128, List<WebSocket>> clients = new();
 
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
@@ -82,6 +83,11 @@ namespace DSFiles_Server.Routes
             catch (WebSocketException ex)
             {
                 clients[poolKey].Remove(socket);
+
+                if (clients[poolKey].Count <= 0)
+                {
+                    clients.TryRemove(poolKey, out _);
+                }
 
                 await socket.CloseAsync(WebSocketCloseStatus.InternalServerError, "Error occurred", CancellationToken.None);
 

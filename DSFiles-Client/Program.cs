@@ -377,7 +377,7 @@ namespace DSFiles_Client
                         }
                         return;
 
-                    case "-pipe": // Ussage -pipe {filename}
+                   /* case "-pipe": // Ussage -pipe {filename}
 
                         using (Stream pipeStream = Console.OpenStandardInput())
                         {
@@ -387,7 +387,7 @@ namespace DSFiles_Client
 
                             Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
                         }
-                        return;
+                        return;*/
                 }
             }
 
