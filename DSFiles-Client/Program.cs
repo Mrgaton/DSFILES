@@ -129,7 +129,7 @@ namespace DSFiles_Client
         [STAThread]
         private static void Main(string[] args)
         {
-            //args = ["C:\\Users\\Mrgaton\\Downloads\\King Gnu - SPECIALZ_7765.mp4"];
+            //args = ["C:\\Users\\Mrgaton\\Downloads\\The Amazing World of Gumball - Teri's J-Pop Music Video_419.mp4"];
 
             if (args.Length > 0 && args[0].StartsWith($"{URLProtocol}://", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -194,13 +194,16 @@ namespace DSFiles_Client
                     }
                 }
 
-                var value = ((string)Registry.ClassesRoot.OpenSubKey(URLProtocol + "\\shell\\open\\command", false).GetValue(string.Empty));
+                var value = ((string)Registry.ClassesRoot.OpenSubKey(URLProtocol + "\\shell\\open\\command", false).GetValue(string.Empty, null));
 
                 if ((protocolKey == null || (value == null || !value.Contains(executablePath))) && !admin)
                 {
                     var exception = (Exception)(new SecurityException("Can't modify url protocol please run as administrator"));
                     WriteException(ref exception);
+
+#if !DEBUG
                     return;
+#endif
                 }
             }
 
@@ -245,10 +248,10 @@ namespace DSFiles_Client
                 };
             }
 
-            
+
 
 #if DEBUG
-            if(args.Length ==0)
+            /*if(args.Length ==0)
             {
                 var df = Assembly.GetCallingAssembly().Location.Replace(".dll",".exe");
 
@@ -270,7 +273,7 @@ namespace DSFiles_Client
 
                 du.WaitForExit();
                 Environment.Exit(0);
-            }
+            }*/
 
 
             if (args.Length > 0 && args[0].StartsWith('/'))
@@ -296,7 +299,6 @@ namespace DSFiles_Client
                         }
                     }
                 }
-#endif
 
                 /*if (args[0] == "/train")
                 {
@@ -314,6 +316,9 @@ namespace DSFiles_Client
 
                 return;
             }
+#endif
+
+            //args = ["C:\\Users\\Mrgaton\\Downloads\\🏆 SuperX： Challenge the $300,000 prize pool (9_4_2025 22：55：28).html"];
 
             args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? GetFromJspaste(arg) : arg).ToArray();
 
@@ -342,7 +347,7 @@ namespace DSFiles_Client
 
                         webHookHelper = new WebHookHelper(client, BitConverter.ToUInt64(splited[1].FromBase64Url()), splited[2]);
 
-                        ulong[] ids = DiscordFilesSpliter.DecompressArray(splited[0].FromBase64Url().Inflate());
+                        ulong[] ids = new DiscordFilesSpliter.GorillaTimestampCompressor().Decompress(splited[0].FromBase64Url().Inflate());
 
                         Console.WriteLine("Removing file chunks (" + ids.Length + ")");
 
@@ -377,17 +382,17 @@ namespace DSFiles_Client
                         }
                         return;
 
-                   /* case "-pipe": // Ussage -pipe {filename}
+                        /* case "-pipe": // Ussage -pipe {filename}
 
-                        using (Stream pipeStream = Console.OpenStandardInput())
-                        {
-                            var result = DiscordFilesSpliter.Encode(webHookHelper, Path.GetFileName(args[1]), pipeStream).GetAwaiter().GetResult();
+                             using (Stream pipeStream = Console.OpenStandardInput())
+                             {
+                                 var result = DiscordFilesSpliter.Encode(webHookHelper, Path.GetFileName(args[1]), pipeStream).GetAwaiter().GetResult();
 
-                            UploadedFilesWriter.WriteLine(result.UploadLog);
+                                 UploadedFilesWriter.WriteLine(result.UploadLog);
 
-                            Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
-                        }
-                        return;*/
+                                 Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
+                             }
+                             return;*/
                 }
             }
 
@@ -467,7 +472,7 @@ namespace DSFiles_Client
 
                 if (args.Length == 1 && Directory.Exists(filePath)) args = args.Concat([""]).ToArray();
 
-                CompressionLevel compLevel = CompressionLevel.NoCompression;
+                int compLevel = 0;
 
                 Stream? stream = null;
 
@@ -489,7 +494,7 @@ namespace DSFiles_Client
 
                     ClientHelper.RemoveOnBoot(archivedPath);
 
-                    SevenZipPaths(archivedPath, compressionLevel, args);
+                    SevenZipPaths(archivedPath, CompressionLevel.Optimal, args);
 
                     filePath = rootPath.Split('\\').Last(c => !string.IsNullOrEmpty(c)) + ".7z";
 

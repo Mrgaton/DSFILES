@@ -11,7 +11,7 @@
     <UseWindowsForms>True</UseWindowsForms>
     <RepositoryType>git</RepositoryType>
     <PackageTags>virus; malo; horroroso; terrorifico;</PackageTags>
-    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <AssemblyVersion>1.1.0</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
     <Version>$(VersionPrefix)</Version>
     <ApplicationIcon>package.ico</ApplicationIcon>

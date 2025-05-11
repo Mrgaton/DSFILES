@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <LangVersion>preview</LangVersion>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -8,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="JSPaste.Net" Version="0.0.9" />
+    <PackageReference Include="System.IO.Pipelines" Version="9.0.4" />
   </ItemGroup>
 
   <ItemGroup>

@@ -8,6 +8,8 @@ using System.Data;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using static DSFiles_Shared.DiscordFilesSpliter;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Server.Routes
 {
@@ -15,15 +17,23 @@ namespace DSFiles_Server.Routes
     {
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {
-            {"mkv","video/matroska" },
-            {"mk3d","video/matroska-3d" },
-            {"mka","audio/matroska" },
+            { "mkv", "video/matroska" },
+            { "mk3d", "video/matroska-3d" },
+            { "mka", "audio/matroska" },
 
-            {"ogg","audio/ogg" },
-            {"flac","audio/flac" },
-            {"mov","video/quicktime" },
-            {"webm","audio/webm" },
-            {"adts","audio/aac" }
+            { "ogg", "audio/ogg" },
+            { "oga", "audio/ogg" },
+            { "flac", "audio/flac" },
+            { "mov", "video/quicktime" },
+            { "webm", "audio/webm" },
+            { "adts", "audio/aac" },
+
+            { "opus", "audio/opus" },
+            { "avif", "image/avif" },
+            { "heic", "image/heic" },
+
+            { "srt",  "application/x-subrip" },
+            { "ass",  "text/x-ssa" }
         };
 
         private static FileExtensionContentTypeProvider contentTypeProvider = CreateProvider();
@@ -51,7 +61,7 @@ namespace DSFiles_Server.Routes
             return provider;
         }
 
-        private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
+        // private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
         public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
         {
@@ -68,23 +78,35 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(Base64Url.FromBase64Url(seedSpltied[0]).BrotliDecompress()) : urlSplited[3];
+                string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(seedSpltied[0].FromBase64Url().BrotliDecompress()) : urlSplited[3];
 
                 string[] seedData = seedSpltied[seedSpltied.Length - 1].Split('$');
-                byte[] seed = Base64Url.FromBase64Url(seedData[0]).Inflate();
-                byte[]? key = seedData.Length > 1 ? Base64Url.FromBase64Url(seedData[1]) : null;
-
-                uint relativeLength = BitConverter.ToUInt32(seed, 1);
+                byte[] seed = (seedData[0].FromBase64Url().Inflate());
+                byte[]? key = seedData.Length > 1 ? seedData[1].FromBase64Url() : null;
 
                 //var etag = seed.Hash();
 
                 ByteConfig config;
 
+                int currentVersion = ByteConfig.ClassVersion;
+
                 try
                 {
                     config = new ByteConfig(seed[0]);
 
-                    if (config.VersionNumber != 1)
+                    if (config.VersionNumber > ByteConfig.ClassVersion)
+                    {
+                        res.StatusCode = 405;
+                        res.Send($"This seed was made with a newer version ({config.VersionNumber}) of the client, nor you are from the feature, this server is outdated or the seed is gibberish");
+                        return;
+                    }
+                    else if (config.VersionNumber < ByteConfig.ClassVersion)
+                    {
+                        res.StatusCode = 405;
+                        res.Send($"This seed was made with an older version (Client {config.VersionNumber}) of the client, download the file from the correct client version.");
+                        return;
+                    }
+                    else if (config.VersionNumber != currentVersion)
                     {
                         throw new VersionNotFoundException();
                     }
@@ -95,34 +117,32 @@ namespace DSFiles_Server.Routes
 
                     string extension = fileName.Contains('.') ? Path.GetExtension(fileName).Trim('.') : "";
 
-                    res.Send("This seed was made from a deprecated version please download the the correct client version, probably it is the oldest one\n\nHere is the compiled seed: " +
+                    res.Send("This seed was made from a deprecated version (probably the first one) please download the the correct client version, probably it is the oldest one\n\nHere is the compiled seed: " +
                         Encoding.UTF8.GetBytes(fileNameWithoutExt).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.Deflate().ToBase64Url());
                     return;
                 }
 
-                ulong channelId = BitConverter.ToUInt64(seed, 1 + sizeof(uint));
+                long contentLength = BitConverter.ToInt64(seed, 1);
 
-                ulong[] ids = DSFilesHelper.DecompressArray(seed.Skip(1 + sizeof(uint) + sizeof(ulong)).ToArray());
+                ulong channelId = BitConverter.ToUInt64(seed, 1 + sizeof(ulong));
+
+                ulong[] ids = new GorillaTimestampCompressor().Decompress(seed.Skip(1 + sizeof(long) + sizeof(ulong)).ToArray());
 
                 if (ids.Length <= 0)
                 {
-                    res.SendCatError(406); //IDs nulas???
-
+                    res.SendCatError(406); //IDs nulas wtf bro???
                     return;
                 }
 
-                long contentLength = ((ids.Length - 1) * CHUNK_SIZE) + relativeLength;
+                string[] attachments = ids.Select((id, index) => $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, index, (int)(contentLength / CHUNK_SIZE) + 1)}").ToArray();
 
-                int i = 0;
+                var refreshed = await DSFilesHelper.RefreshUrls(attachments[Math.Max(0, attachments.Length - 50)..]);
 
-                var attachments = ids.Select(id =>
-                {
-                    string url = $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{DSFilesHelper.EncodeAttachementName(channelId, i + 1, ids.Length)}";
-                    i++;
-                    return url;
-                }).ToArray();
+                var lastSize = await DSFilesHelper.GetAttachmentSize(refreshed.Last());
 
-                //res.Send('[' + string.Join(", ",attachements)+ ']');
+                contentLength = ((attachments.Length - 1) * CHUNK_SIZE) + lastSize;
+
+                //res.Send('[' + string.Join(", ",attachments)+ ']');
 
                 if (ids.Length > 2)
                 {
@@ -137,7 +157,7 @@ namespace DSFiles_Server.Routes
                 }
                 else
                 {
-                    res.AddHeader("Cache-Control", "public, max-age=86300");
+                    res.AddHeader("Cache-Control", "public, max-age=31536000, immutable");
                 }
 
                 contentTypeProvider.TryGetContentType(fileName, out string? contentType);
@@ -166,7 +186,7 @@ namespace DSFiles_Server.Routes
                 {
                     if (config.Compression)
                     {
-                        res.SendStatus(500, "The data content is compressed and cant send specific chunks");
+                        res.SendStatus(500, "The data content is compressed and cant send specific range");
                         return;
                     }
 
@@ -229,22 +249,20 @@ namespace DSFiles_Server.Routes
 
         private static async Task SendFullFile(HttpListenerResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
         {
-            int part = 0, retry = 0;
+            int part = 0;
 
-            using (TransformStream ts = new TransformStream(res.OutputStream, key))
+            using (AesCTRStream ts = new AesCTRStream(res.OutputStream, key))
             {
                 while (part < attachments.Length)
                 {
-                    string[] refreshedUrls = await DSFilesHelper.RefreshUrls(attachments.Skip(part).Take(attachments.Length - part > 0 ? RefreshUrlsChunkSize : part - attachments.Length).ToArray());
-
-                    for (int e = part; e < part + RefreshUrlsChunkSize && e < attachments.Length; e++)
+                    try
                     {
-                        string url = refreshedUrls[e - part];
+                        string[] refreshedUrls = await DSFilesHelper.RefreshUrls(attachments.Skip(part).Take(attachments.Length - part > 0 ? RefreshUrlsChunkSize : part - attachments.Length).ToArray());
 
-                    rety:
-
-                        try
+                        for (int e = part; e < part + RefreshUrlsChunkSize && e < attachments.Length; e++)
                         {
+                            string url = refreshedUrls[e - part];
+
                             if (!res.OutputStream.CanWrite)
                             {
                                 throw new IOException("Client disconnected.");
@@ -265,16 +283,18 @@ namespace DSFiles_Server.Routes
                                 {
                                     response.EnsureSuccessStatusCode();
 
-                                    Console.WriteLine("Sending id " + id);
                                     //dataPart = await response.Content.ReadAsByteArrayAsync();
 
                                     if (offset != 0 && e == 0)
                                     {
+                                        if (offset > CHUNK_SIZE)
+                                            throw new InvalidDataException("Something terribly terrible happened with the offset.");
+
                                         ts.Position = ((startChunk + e + part) * CHUNK_SIZE) + offset;
                                     }
                                     else
                                     {
-                                        ts.Position = ((startChunk + e + part) * CHUNK_SIZE);
+                                        ts.Position = (startChunk + e + part) * CHUNK_SIZE;
                                     }
 
                                     using (var dataStream = await response.Content.ReadAsStreamAsync())
@@ -286,49 +306,49 @@ namespace DSFiles_Server.Routes
                                         while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                                         {
                                             await ts.WriteAsync(buffer, 0, bytesRead);
+
+                                            if (offset < CHUNK_SIZE) offset += bytesRead;
                                         }
+
+                                        //Console.WriteLine("Ended sending");
                                     }
                                 }
                             }
-                        }
-                        catch (HttpRequestException ex)
-                        {
-                            Console.WriteLine(ex.Message);
 
-                            if (ex.StatusCode == HttpStatusCode.NotFound)
-                            {
-                                res.Headers.Remove(HttpRequestHeader.CacheControl);
-                                res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-
-                                res.SendCatError(204);
-                                res.Close();
-                                return;
-                            }
-                        }
-                        catch (HttpListenerException ex)
-                        {
-                            Console.WriteLine(ex.Message);
-
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            Program.WriteException(ref ex);
-
-                            retry++;
-
-                            if (retry > MaxRetries)
-                            {
-                                res.Send(ex.ToString());
-                                return;
-                            }
-
-                            Thread.Sleep(500);
-
-                            goto rety;
                         }
                     }
+                    catch (HttpRequestException ex)
+                    {
+                        Console.WriteLine(ex.Message);
 
+                        if (ex.StatusCode == HttpStatusCode.NotFound)
+                        {
+                            res.Headers.Remove(HttpRequestHeader.CacheControl);
+                            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                            res.SendCatError(204);
+                            res.Close();
+                            return;
+                        }
+                        else
+                        {
+                            res.StatusCode = (int)ex.StatusCode;
+                            res.Send(ex.ToString());
+                            res.Close();
+                        }
+                    }
+                    catch (HttpListenerException ex)
+                    {
+                        Console.WriteLine(ex.Message);
+
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.WriteException(ref ex);
+
+                        res.Send(ex.ToString());
+                        return;
+                    }
                     part += RefreshUrlsChunkSize;
                 }
             }
@@ -338,32 +358,7 @@ namespace DSFiles_Server.Routes
             res.Close();
         }
 
-        private sealed class ByteConfig
-        {
-            public bool Compression { get; set; }
-            public int VersionNumber { get; set; } = 1;
 
-            public ByteConfig()
-            { }
-
-            public ByteConfig(byte header)
-            {
-                this.Compression = (header & 0b10000000) != 0;
-                this.VersionNumber = header & 0b00001111;
-
-                if (VersionNumber == 0 || VersionNumber == 15) throw new ArgumentException("Byte header has been made with an unsuported byte");
-            }
-
-            public byte ToByte()
-            {
-                byte result = 0;
-
-                if (Compression) result |= 0b10000000;
-
-                result |= (byte)(VersionNumber & 0b00001111);
-                return result;
-            }
-        }
 
         private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
 

@@ -1,37 +1,80 @@
 ﻿using DSFiles_Shared;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Net.Http.Headers;
+using System.Net.Mail;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Server.Helpers
 {
     internal static class DSFilesHelper
     {
-        private static readonly ConcurrentDictionary<string, (string refreshedUrl, DateTime time)> cache = new();
+        private static readonly ConcurrentDictionary<string, (string refreshedUrl, DateTime time)> attachementsCache = new();
+        private static readonly ConcurrentDictionary<string, long> lengthCache = new();
+
+        private static AuthenticationHeaderValue discordAuth = new AuthenticationHeaderValue("Bot", Environment.GetEnvironmentVariable("TOKEN") ?? throw new ArgumentNullException("Token environment variable is null"));
 
         private static readonly int maxCacheSize = 12 * 1000;
+
+        public static async Task<long> GetAttachmentSize(string url)
+        {
+            string trimedUrl = url.Split('?')[0];
+
+            if (lengthCache.ContainsKey(trimedUrl))
+            {
+                return lengthCache[trimedUrl];
+            }
+
+            using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Head, url))
+            using (HttpResponseMessage res = await Program.client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead))
+            {
+                if (!res.IsSuccessStatusCode)
+                {
+                    throw new Exception($"Couldn’t fetch attachment size (HTTP {(int)res.StatusCode})");
+                }
+
+                var contentLength = res.Content.Headers.ContentLength;
+
+                if (contentLength == null)
+                {
+                    throw new Exception("ContentLength was not specified in head of attachement");
+                }
+
+                if (lengthCache.Count >= maxCacheSize)
+                {
+                    var oldestKey = lengthCache.Keys.First();
+                    lengthCache.TryRemove(oldestKey, out _);
+                }
+
+                lengthCache[trimedUrl] = (long)contentLength;
+
+                return (long)contentLength;
+            }
+        }
 
         public static async Task<string[]> RefreshUrls(string[] urls)
         {
             if (urls.Length > 50) throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
 
-            List<string> refreshedUrls = [];
-            List<string> urlsToRefresh = [];
+            var refreshedUrls = new List<string>(urls.Length);
+            var urlsToRefresh = new List<string>(urls.Length);
 
             foreach (var url in urls)
             {
-                if (cache.ContainsKey(url))
+                if (attachementsCache.ContainsKey(url))
                 {
-                    var info = cache[url];
+                    var info = attachementsCache[url];
 
-                    if ((DateTime.Now - info.time).TotalMinutes <= (23 * 60) + 50)
+                    if ((DateTime.Now - info.time).TotalMinutes >= (23 * 60) + 55)
+                    {
+                        attachementsCache.TryRemove(url, out _);
+                    }
+                    else
                     {
                         refreshedUrls.Add(url + info.refreshedUrl);
-
-                        cache.TryRemove(url,out _);
                     }
                 }
                 else
@@ -46,18 +89,18 @@ namespace DSFiles_Server.Helpers
 
                 for (int i = 0; i < urlsToRefresh.Count; i++)
                 {
-                    if (cache.Count >= maxCacheSize)
+                    if (attachementsCache.Count >= maxCacheSize)
                     {
-                        var oldestKey = cache.Keys.First();
+                        var oldestKey = attachementsCache.Keys.First();
 
-                        cache.TryRemove(oldestKey, out _);
+                        attachementsCache.TryRemove(oldestKey, out _);
                     }
 
                     var refreshedUrl = refreshedUrlsFromApi[i];
 
                     if (refreshedUrl.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        cache[urlsToRefresh[i]] = ('?' + refreshedUrl.Split('?')[1], DateTime.Now);
+                        attachementsCache[urlsToRefresh[i]] = ('?' + refreshedUrl.Split('?')[1], DateTime.Now);
                     }
 
                     refreshedUrls.Add(refreshedUrl);
@@ -67,7 +110,6 @@ namespace DSFiles_Server.Helpers
             return refreshedUrls.ToArray();
         }
 
-        private static AuthenticationHeaderValue discordAuth = new AuthenticationHeaderValue("Bot", Environment.GetEnvironmentVariable("TOKEN") ?? throw new ArgumentNullException("Token environment variable is null"));
 
         private static async Task<string[]> RefreshUrlsCore(string[] urls)
         {
@@ -90,33 +132,6 @@ namespace DSFiles_Server.Helpers
             }
         }
 
-        public static string EncodeAttachementName(ulong channelId, int index, int amount) => Base64Url.ToBase64Url(BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).TrimStart('_') + '_' + (amount - index);
-
-        public static ulong[] DecompressArray(byte[] data) => ArrayDeserealizer(data);
-
-        private static ulong[] ArrayDeserealizer(byte[] data)
-        {
-            using (MemoryStream memStr = new MemoryStream(data))
-            {
-                ulong deltaMin = memStr.ReadULong(false);
-
-                ulong last = 0;
-
-                ulong[] array = new ulong[(memStr.Length / sizeof(ulong)) - 1];
-
-                for (int i = 0; i < array.Length; i++)
-                {
-                    ulong num = memStr.ReadULong(i % 2 == 0);
-
-                    array[i] = num + last;
-
-                    if (i != array.Length - 1) array[i] += deltaMin;
-
-                    last = array[i];
-                }
-
-                return array;
-            }
-        }
+        public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
     }
 }

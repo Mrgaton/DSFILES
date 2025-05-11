@@ -6,7 +6,7 @@
         {
             get
             {
-                return new FileStream(Path.GetTempFileName(), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.DeleteOnClose);
+                return new FileStream(Path.GetTempFileName(), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096 * 4, FileOptions.DeleteOnClose);
             }
         }
 

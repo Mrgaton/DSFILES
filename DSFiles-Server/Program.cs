@@ -17,12 +17,183 @@ namespace DSFiles_Server
             MaxConnectionsPerServer = short.MaxValue,
         })
         {
-            DefaultRequestVersion = HttpVersion.Version11,
+            DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
 
         private static void Main(string[] args)
         {
+            /*Stopwatch totalStopwatch = new Stopwatch();
+            Stopwatch compressionStopwatch = new Stopwatch();
+            Stopwatch decompressionStopwatch = new Stopwatch();
+
+            totalStopwatch.Start();
+
+            int dataSize = 1024 * 1024 * 64;
+            int keySize = 32;
+
+            byte[] keyd = RandomNumberGenerator.GetBytes(keySize);
+
+            Console.WriteLine($"Generated a {keySize}-byte key.");
+
+            byte[] originalData = (new byte[dataSize]).Select(e => e = 100).ToArray();
+            
+            Console.WriteLine($"Generated {dataSize / (1024 * 1024)} MB of random data.");
+
+            byte[] firstPassData = null;
+            byte[] secondPassData = null;
+            bool verificationSucceeded = false;
+
+            Console.WriteLine("\n--- Starting First Transformation Pass ---");
+            try
+            {
+                using (MemoryStream originalMs = new MemoryStream(originalData))
+                using (MemoryStream firstPassMs = new MemoryStream())
+                using (AesCTRStream transform1 = new AesCTRStream(originalMs, keyd))
+                {
+                    transform1.CopyTo(firstPassMs);
+                    firstPassData = firstPassMs.ToArray();
+                    Console.WriteLine("First transformation completed.");
+                    Console.WriteLine($"Processed {firstPassData.Length} bytes.");
+
+                    if (dataSize > 0 && !originalData.SequenceEqual(firstPassData))
+                    {
+                        Console.WriteLine("Intermediate data is different from original (as expected).");
+                    }
+                    else if (dataSize > 0)
+                    {
+                        Console.WriteLine("WARNING: Intermediate data is THE SAME as original. The transform might be ineffective or identity.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during first transformation: {ex.Message}");
+                totalStopwatch.Stop();
+                return;
+            }
+
+
+            Console.WriteLine("\n--- Starting Second Transformation Pass ---");
+            if (firstPassData == null)
+            {
+                Console.WriteLine("Error: First pass data is null, cannot proceed.");
+                totalStopwatch.Stop();
+                return;
+            }
+            try
+            {
+                using (MemoryStream firstPassInputMs = new MemoryStream(firstPassData))
+                using (MemoryStream secondPassMs = new MemoryStream()) 
+                                                                       
+                using (AesCTRStream transform2 = new AesCTRStream(firstPassInputMs, keyd))
+                {
+                    transform2.CopyTo(secondPassMs);
+                    secondPassData = secondPassMs.ToArray();
+                    Console.WriteLine("Second transformation completed.");
+                    Console.WriteLine($"Processed {secondPassData.Length} bytes.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during second transformation: {ex.Message}");
+                totalStopwatch.Stop();
+                return;
+            }
+
+            Console.WriteLine("\n--- Verification ---");
+            if (originalData.Length != secondPassData?.Length)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"ERROR: Length mismatch! Original: {originalData.Length}, Final: {secondPassData?.Length ?? -1}");
+                Console.ResetColor();
+            }
+            else
+            {
+                bool areEqual = originalData.SequenceEqual(secondPassData);
+
+                if (areEqual)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("SUCCESS: Original data and final data are identical.");
+                    Console.WriteLine("The transformation IS reversible with the same parameters.");
+                    Console.ResetColor();
+                    verificationSucceeded = true;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("FAILURE: Original data and final data differ.");
+                    Console.WriteLine("The transformation IS NOT reversible or there's a bug.");
+                    Console.ResetColor();
+
+                    for (int i = 0; i < Math.Min(originalData.Length, secondPassData.Length); ++i)
+                    {
+                        if (originalData[i] != secondPassData[i])
+                        {
+                            Console.WriteLine($"First difference found at index {i}: Original=0x{originalData[i]:X2}, Final=0x{secondPassData[i]:X2}");
+                            break;
+                        }
+                    }
+                }
+            }
+
+            totalStopwatch.Stop();
+
+            if (verificationSucceeded)
+            {
+                Console.WriteLine("\n--- Compression of Transformed Data ---");
+                byte[] compressedData = null;
+                byte[] decompressedData = null;
+
+                try
+                {
+                    compressionStopwatch.Start();
+                    using (MemoryStream compressedMs = new MemoryStream())
+                    {
+                        using (BrotliStream gzipStream = new BrotliStream(compressedMs, CompressionMode.Compress, leaveOpen: true)) // leaveOpen allows compressedMs to be read later
+                        {
+                             gzipStream.Write(firstPassData);
+                        }
+
+                        compressedData = compressedMs.ToArray();
+                    }
+                    compressionStopwatch.Stop();
+                    double compressionRatio = (double)compressedData.Length / firstPassData.Length;
+                    Console.WriteLine($"Compressed size: {compressedData.Length} bytes");
+                    Console.WriteLine($"Compression Ratio: {compressionRatio:P4}");
+                    Console.WriteLine($"Time to compress: {compressionStopwatch.ElapsedMilliseconds} ms");
+
+                    if (firstPassData.SequenceEqual(decompressedData))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("SUCCESS: Decompressed data matches the first pass transformed data.");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("FAILURE: Decompressed data does NOT match the first pass transformed data!");
+                        Console.ResetColor();
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    compressionStopwatch.Stop();
+                    decompressionStopwatch.Stop();
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Error during compression/decompression: {ex.Message}");
+                    Console.ResetColor();
+                }
+            }
+            else
+            {
+                Console.WriteLine("\n--- Compression Skipped (Verification Failed) ---");
+            }
+
+            return;*/
+
             if (File.Exists(".env"))
             {
                 foreach (var line in File.ReadAllLines(".env").Select(l => l.Trim()))
@@ -66,6 +237,7 @@ namespace DSFiles_Server
                     Console.WriteLine($"An error occurred: {ex.Message}");
                 }
             }
+
 
             bool debug = Debugger.IsAttached;
 

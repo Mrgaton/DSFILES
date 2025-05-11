@@ -173,10 +173,11 @@ namespace DSFiles_Shared
             return await PostFileToWebhook(form);
         }
 
-        public async Task<string> PostFileToWebhook(string fileName, byte[] fileData)
+        public async Task<string> PostFileToWebhook(string fileName, byte[] buffer) => await PostFileToWebhook(fileName, buffer, 0, buffer.Length);
+        public async Task<string> PostFileToWebhook(string fileName, byte[] buffer, int offset, int count)
         {
             return await PostFileToWebhook(new MultipartFormDataContent() {
-                { new ByteArrayContent(fileData, 0, fileData.Length), 0.ToString(), fileName}
+                { new ByteArrayContent(buffer, offset, count), 0.ToString(), fileName}
             });
         }
 
