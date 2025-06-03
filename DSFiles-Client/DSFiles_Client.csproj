@@ -1,28 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <LangVersion>preview</LangVersion>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disabled</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
-    <UseWindowsForms>True</UseWindowsForms>
     <RepositoryType>git</RepositoryType>
     <PackageTags>virus; malo; horroroso; terrorifico;</PackageTags>
     <AssemblyVersion>1.1.0</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
     <Version>$(VersionPrefix)</Version>
     <ApplicationIcon>package.ico</ApplicationIcon>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <IsPublishable>False</IsPublishable>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <IsPublishable>False</IsPublishable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <IsPublishable>true</IsPublishable>
+<EnableComHosting>true</EnableComHosting> 
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +26,7 @@
 
   <ItemGroup>
     <PackageReference Include="JSPaste.Net" Version="0.0.9" />
+    <PackageReference Include="Terminal.Gui" Version="2.0.0-prealpha.1985" />
   </ItemGroup>
 
   <ItemGroup>

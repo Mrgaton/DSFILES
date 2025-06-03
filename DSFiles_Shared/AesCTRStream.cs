@@ -2,7 +2,10 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
+using Aes = System.Security.Cryptography.Aes;
 
 namespace DSFiles_Shared
 {
@@ -124,27 +127,23 @@ namespace DSFiles_Shared
         private readonly byte[] _counterBlock = new byte[BlockSize];
         private readonly byte[] _keystream = new byte[BlockSize];
 
+        private readonly byte[] _keystream32 = new byte[2 * BlockSize];
         public void Transform(Span<byte> buffer, long position)
         {
             int length = buffer.Length;
             if (length == 0) return;
 
-            int offsetInBlock = (int)(position & (BlockSize - 1)); // e.g., position & 0xF
-            ulong counterValue = (ulong)(position >> 4); // e.g., position / BlockSize
+            int offsetInBlock = (int)(position & (BlockSize - 1)); 
+            ulong counterValue = (ulong)(position >> 4); 
             int processedBytes = 0;
 
-            // --- 1) PREPARE COUNTER BLOCK (Optimized) ---
-            // The nonce part is ALREADY in _counterBlock from the constructor.
-            // We only need to write the counterValue.
-            // WriteCounter is already inlined and efficient.
-
-            // --- 2) If we start in the middle of a block, do the partial first block ---
             if (offsetInBlock != 0)
             {
                 WriteCounterToBlock(counterValue);
                 _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream, 0);
 
                 int bytesToXor = Math.Min(BlockSize - offsetInBlock, length);
+
                 XorBytes(buffer.Slice(0, bytesToXor),
                          _keystream.AsSpan().Slice(offsetInBlock, bytesToXor));
 
@@ -152,37 +151,63 @@ namespace DSFiles_Shared
                 counterValue++;
             }
 
-            // --- 3) Full 16-byte blocks ---
-            // How many full blocks remain AFTER the potential partial first block
             int remainingLength = length - processedBytes;
             int fullBlocks = remainingLength / BlockSize;
 
             if (fullBlocks > 0)
             {
-                Span<byte> fullBlockBufferSlice = buffer.Slice(processedBytes, fullBlocks * BlockSize);
-                ReadOnlySpan<ulong> keystreamUlongs = MemoryMarshal.Cast<byte, ulong>(_keystream);
+                if (Avx2.IsSupported)
+                {
+                    int numAvxPairs = fullBlocks / 2;
+
+                    if (numAvxPairs > 0)
+                    {
+                        for (int i = 0; i < numAvxPairs; i++)
+                        {
+                            WriteCounterToBlock(counterValue);
+                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, 0); 
+                            WriteCounterToBlock(counterValue + 1);
+                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, BlockSize); 
+
+                            Span<byte> dstSlice = buffer.Slice(processedBytes, 2 * BlockSize);
+                            ref byte dstRef = ref MemoryMarshal.GetReference(dstSlice);
+
+                            ref byte ksRef = ref MemoryMarshal.GetReference(_keystream32);
+
+                            var ksVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref ksRef);
+                            var dataVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref dstRef); 
+
+                            var resultVec = Avx2.Xor(ksVec, dataVec);
+
+                            Unsafe.WriteUnaligned(ref dstRef, resultVec);
+
+                            processedBytes += 2 * BlockSize;
+                            counterValue += 2;
+                        }
+
+                        fullBlocks -= numAvxPairs * 2;
+                    }
+                }
 
                 for (int i = 0; i < fullBlocks; i++)
                 {
                     WriteCounterToBlock(counterValue);
+
                     _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream, 0);
 
-                    Span<ulong> targetUlongs = MemoryMarshal.Cast<byte, ulong>(
-                        buffer.Slice(processedBytes, BlockSize) // Slice directly here
-                    );
+                    Span<byte> targetSlice = buffer.Slice(processedBytes, BlockSize);
 
-                    for (int j = 0; j < targetUlongs.Length; j++)
-                    {
-                        targetUlongs[j] ^= keystreamUlongs[j];
-                    }
-                    processedBytes += BlockSize; // Increment here
+                    ReadOnlySpan<ulong> ksU = MemoryMarshal.Cast<byte, ulong>(_keystream);
+                    Span<ulong> dstU = MemoryMarshal.Cast<byte, ulong>(targetSlice);
+                    for (int j = 0; j < dstU.Length; j++)
+                        dstU[j] ^= ksU[j];
+
+
+                    processedBytes += BlockSize;
                     counterValue++;
                 }
-                processedBytes += fullBlocks * BlockSize;
             }
 
-
-            // --- 4) Final partial block (if any) ---
             if (processedBytes < length)
             {
                 WriteCounterToBlock(counterValue);
@@ -191,24 +216,17 @@ namespace DSFiles_Shared
                 int bytesRemaining = length - processedBytes;
                 XorBytes(buffer.Slice(processedBytes, bytesRemaining),
                          _keystream.AsSpan().Slice(0, bytesRemaining));
-                // processedBytes += bytesRemaining; // Not needed as we are done
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteCounterToBlock(ulong counter)
         {
-            // This writes to the first 8 bytes of _counterBlock.
-            // The nonce part (e.g., bytes 8-15) remains untouched.
             BinaryPrimitives.WriteUInt64LittleEndian(_counterBlock, counter);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void XorBytes(Span<byte> target, ReadOnlySpan<byte> source)
         {
-            // The JIT is often smart enough to vectorize this for small, fixed sizes like this.
-            // For very large spans, manual vectorization with System.Numerics.Vectors
-            // or System.Runtime.Intrinsics might be considered, but for crypto block
-            // processing, this is usually sufficient.
             for (int i = 0; i < target.Length; i++)
             {
                 target[i] ^= source[i];

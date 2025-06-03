@@ -9,7 +9,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using static DSFiles_Shared.DiscordFilesSpliter;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Server.Routes
 {
@@ -138,9 +137,12 @@ namespace DSFiles_Server.Routes
 
                 var refreshed = await DSFilesHelper.RefreshUrls(attachments[Math.Max(0, attachments.Length - 50)..]);
 
-                var lastSize = await DSFilesHelper.GetAttachmentSize(refreshed.Last());
+                if (config.Compression)
+                {
+                    var lastSize = await DSFilesHelper.GetAttachmentSize(refreshed.Last());
 
-                contentLength = ((attachments.Length - 1) * CHUNK_SIZE) + lastSize;
+                    contentLength = ((attachments.Length - 1) * CHUNK_SIZE) + lastSize;
+                }
 
                 //res.Send('[' + string.Join(", ",attachments)+ ']');
 
@@ -149,7 +151,7 @@ namespace DSFiles_Server.Routes
                     if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
                     {
                         res.ContentType = "text/html; charset=utf-8";
-                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
+                        //res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
                         return;
                     }
 
@@ -160,7 +162,7 @@ namespace DSFiles_Server.Routes
                     res.AddHeader("Cache-Control", "public, max-age=31536000, immutable");
                 }
 
-                contentTypeProvider.TryGetContentType(fileName, out string? contentType);
+                contentTypeProvider.TryGetContentType(fileName, out string? contentType);;
 
                 res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
                 res.AddHeader("Accept-Ranges", "bytes");
@@ -204,7 +206,6 @@ namespace DSFiles_Server.Routes
                     res.OutputStream.Write([], 0, 0);
 
                     await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
-
                     return;
                 }
 
@@ -217,7 +218,6 @@ namespace DSFiles_Server.Routes
                 if (!res.OutputStream.CanWrite)
                 {
                     res.Close();
-
                     return;
                 }
 
@@ -307,14 +307,14 @@ namespace DSFiles_Server.Routes
                                         {
                                             await ts.WriteAsync(buffer, 0, bytesRead);
 
-                                            if (offset < CHUNK_SIZE) offset += bytesRead;
+                                            /*if (offset < CHUNK_SIZE) 
+                                                offset += bytesRead;*/
                                         }
 
                                         //Console.WriteLine("Ended sending");
                                     }
                                 }
                             }
-
                         }
                     }
                     catch (HttpRequestException ex)
@@ -339,13 +339,11 @@ namespace DSFiles_Server.Routes
                     catch (HttpListenerException ex)
                     {
                         Console.WriteLine(ex.Message);
-
                         return;
                     }
                     catch (Exception ex)
                     {
                         Program.WriteException(ref ex);
-
                         res.Send(ex.ToString());
                         return;
                     }
@@ -361,6 +359,8 @@ namespace DSFiles_Server.Routes
 
 
         private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
+
+        //Ancient old code xd
 
         /*private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
         {

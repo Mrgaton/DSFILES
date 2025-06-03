@@ -21,11 +21,14 @@ namespace DSFiles_Shared
         public string? name { get; set; }
         public int type { get; set; }
 
-        public WebHookHelper(HttpClient client, ulong webHookId, string token)
+        public WebHookHelper(HttpClient client, ulong webId, string webToken)
         {
             _client = client;
 
-            using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = $"https://ptb.discord.com/api/webhooks/{webHookId}/{token}").Result)
+            id = webId;
+            token = webToken;
+
+            using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = $"https://ptb.discord.com/api/webhooks/{webId}/{webToken}").Result)
             {
                 if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
 
@@ -33,6 +36,7 @@ namespace DSFiles_Shared
             }
         }
 
+        public WebHookHelper() { }
         public WebHookHelper(HttpClient client, string url)
         {
             _client = client;
@@ -92,13 +96,16 @@ namespace DSFiles_Shared
 
         public async Task<HttpStatusCode> SendMessage(string content, string username) => await SendMessage(content, username, "");
 
-        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + JsonSerializer.Serialize(content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
+        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => 
+            (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + (content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
 
         public async Task<string> GetMessage(ulong id) => await (await MakeRequest(HttpMethod.Get, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
         public async Task<string> RemoveMessage(ulong id) => await (await MakeRequest(HttpMethod.Delete, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
-        public async Task RemoveMessages(ulong[] ids)
+
+        public async Task RemoveMessages(ulong[] ids) => await RemoveMessages(ids, DiscordFilesSpliter.ConsoleProgress);
+        public async Task RemoveMessages(ulong[] ids, IProgress<string> p)
         {
             foreach (ulong id in ids)
             {
@@ -106,9 +113,9 @@ namespace DSFiles_Shared
 
                 retry:
 
-                Console.WriteLine("Removing message id: " + id);
+                p.Report("Removing message id: " + id + '\n');
 
-                var result = RemoveMessage(id).Result;
+                var result = await RemoveMessage(id);
 
                 if (result.Length > 0 && result.StartsWith('{') && result.EndsWith('}'))
                 {
@@ -119,16 +126,18 @@ namespace DSFiles_Shared
                         Thread.Sleep((int)((double)json["retry_after"] * 1000) + 1);
                         goto retry;
                     }
-                    else
+                    else if (!string.IsNullOrEmpty(json.ToString()))
                     {
-                        Console.WriteLine(json);
+                        p.Report(json.ToString());
                     }
                 }
                 else if (!string.IsNullOrEmpty(result))
                 {
-                    Console.WriteLine(result);
+                    p.Report(result);
                 }
             }
+
+            p.Report("\nDone deleting messages\n");
         }
 
         public struct FileData

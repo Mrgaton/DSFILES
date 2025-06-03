@@ -179,5 +179,53 @@ namespace DSFiles_Shared
 
             return BitConverter.ToUInt64(buffer, 0);
         }
+        public static void RemoveFromStart(this MemoryStream ms, int numberOfBytesToRemove)
+        {
+            if (ms == null)
+            {
+                throw new ArgumentNullException(nameof(ms));
+            }
+
+            if (numberOfBytesToRemove <= 0 || ms.Length == 0)
+            {
+                return;
+            }
+
+            long currentLength = ms.Length;
+            long currentPosition = ms.Position;
+
+            if (numberOfBytesToRemove >= currentLength)
+            {
+                ms.SetLength(0);
+                ms.Position = 0;
+                return;
+            }
+
+            if (!ms.TryGetBuffer(out ArraySegment<byte> bufferSegment))
+            {
+                throw new InvalidOperationException("MemoryStream's underlying buffer is not accessible.");
+            }
+
+            Span<byte> fullDataSpan = bufferSegment.AsSpan();
+
+            Span<byte> sourceSpan = fullDataSpan.Slice(numberOfBytesToRemove);
+
+            Span<byte> destinationSpan = fullDataSpan; 
+
+            sourceSpan.CopyTo(destinationSpan);
+
+            long newLength = currentLength - numberOfBytesToRemove;
+            ms.SetLength(newLength);
+
+            if (currentPosition < numberOfBytesToRemove)
+            {
+                ms.Position = 0;
+            }
+            else
+            {
+                ms.Position = currentPosition - numberOfBytesToRemove;
+            }
+          
+        }
     }
 }

@@ -1,12 +1,9 @@
 ﻿using DSFiles_Shared;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
-using System.Net.Mail;
-using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DSFiles_Server.Helpers
 {
@@ -109,7 +106,6 @@ namespace DSFiles_Server.Helpers
 
             return refreshedUrls.ToArray();
         }
-
 
         private static async Task<string[]> RefreshUrlsCore(string[] urls)
         {

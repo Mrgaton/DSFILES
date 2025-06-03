@@ -1,10 +1,12 @@
-﻿using System.IO.Compression;
+﻿using System;
+using System.IO;
+using System.IO.Compression;
 
 namespace DSFiles_Client.Helpers
 {
     internal class ZipCompressor
     {
-        public static string GetRootPath(params ReadOnlySpan<string> pathArrays)
+        public static string GetRootPath(string[] args, params string[] pathArrays)
         {
             string commonRoot = Directory.Exists(pathArrays[0]) ? pathArrays[0] : Path.GetDirectoryName(pathArrays[0]);
 

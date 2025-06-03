@@ -1,4 +1,5 @@
 ﻿using JSPasteNet;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -8,7 +9,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading;
 using System.Web;
 
 namespace DSFiles_Shared
@@ -29,6 +29,10 @@ namespace DSFiles_Shared
         }*/
 
         //private const long CHUNK_SIZE = (25 * 1024 * 1024) - 256;
+
+        public static IProgress<string> ConsoleProgress = new Progress<string>(Console.WriteLine);
+        public static IProgress<string> ErrorProgress = new Progress<string>(Console.Error.WriteLine);
+
         public const int CHUNK_SIZE = (10 * 1000 * 1000) - 256;
         private const int IOBuffer = 128 * 1024;
 
@@ -57,78 +61,51 @@ namespace DSFiles_Shared
             }
         }
 
-        private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avi", ".png", ".jpg", ".iso"];
+        private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avif", ".avi", ".png", ".jpg", ".iso"];
 
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
-        private static int SelectQuality(long length)
+     
+        public static bool IsCompresable(string? ext, long filesize)
         {
-            if (length > 125L << 20) return 4;
-            else if (length > 100L << 20) return 5;
-            else if (length > 75L << 20) return 7;
-            else if (length > 55L << 20) return 9;
-            else if (length > 25L << 20) return 10;
-            else return 11;
+            if (filesize > MaxCompressionFileSize) 
+                return false;
+
+            return blackListedExt.Any(e => e == ext);
         }
-        public static int ShouldCompress(string? ext, long filesize, bool askToNotCompress = true)
+        public static CompressionLevel ShouldCompress(string? ext, long filesize)
         {
-            bool longTime = false;
-            bool notUseful = blackListedExt.Any(e => e == ext);
-
-            if (filesize > 512 * 1000 * 1000) longTime = true;
-
-            if (!notUseful)
+            if (IsCompresable(ext, filesize))
             {
-                if (askToNotCompress)
+                Console.Write("Do you want to compress this file? (you should not compress images, videos, zips or any similar packed or already compressed content) [Y,N]:");
+                
+                char response = GetConsoleKeyChar(['y', 's', 'n']);
+                bool compress = response is 'y' or 's';
+
+                Console.WriteLine('\n');
+
+                if (!compress) return 0;
+
+                Console.Write("Select one of following options (fastest, optimal, smallest size) [F,O,S]:");
+                char compressionLevel = GetConsoleKeyChar(['f', 'o', 's']);
+                Console.WriteLine('\n');
+
+                switch (compressionLevel)
                 {
-                    if (!longTime && !notUseful)
-                    {
-                        Console.Write("Do you want to compress this file? [Y,N]:");
-                    }
-                    else if (longTime && !notUseful)
-                    {
-                        Console.Write("Do you want to compress this file? (it might take a long time) [Y,N]:");
-                    }
-                    else if (notUseful && !longTime)
-                    {
-                        Console.Write("Do you want to compress this file? (it will probably not be useful) [Y,N]:");
-                    }
-                    else
-                    {
-                        Console.Write("Do you want to compress this file? (it wont be useful and will take a lot of time) [Y,N]:");
-                    }
+                    case 'f':
+                        return CompressionLevel.Fastest;
 
-                    char response = GetConsoleKeyChar(['y', 's', 'n']);
-                    bool compress = response is 'y' or 's';
-                    Console.WriteLine('\n');
+                    case 'o':
+                        return CompressionLevel.Optimal;
 
-                    if (!compress) return 0;
+                    case 's':
+                        return CompressionLevel.SmallestSize;
 
-                    Console.Write("Select one of following options (fastest, optimal, smallest size) [F,O,S]:");
-                    char compressionLevel = GetConsoleKeyChar(['f', 'o', 's']);
-                    Console.WriteLine('\n');
-
-                    switch (compressionLevel)
-                    {
-                        case 'f':
-                            return 1;
-
-                        case 'o':
-                            return 4;
-
-                        case 's':
-                            return 11;
-
-                        default:
-                            return 0;
-                    }
-                }
-                else
-                {
-                    return SelectQuality(filesize);
+                    default:
+                        return CompressionLevel.NoCompression;
                 }
             }
 
-            return 0;
+            return CompressionLevel.NoCompression;
         }
 
         private static char GetConsoleKeyChar(char[] options)
@@ -156,15 +133,58 @@ namespace DSFiles_Shared
         ///
         private static Stopwatch sw = new Stopwatch();
 
-        public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, int compressionLevel = 4) => await EncodeCore(webHook, name, stream, compressionLevel);
+        private static int MaxCompressionFileSize = (int.MaxValue / 8) * 7;
+        public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, level);
 
-        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, int compressionLevel = 4)
+        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression)
         {
-            bool compress = compressionLevel > 0;
+            bool compress = level != CompressionLevel.NoCompression;
 
+            using (StreamWriter tempIdsWriter = UnsendedIdsWriter)
             using (MemoryStream seedData = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(seedData))
             {
+                if (compress)
+                {
+                    if (stream.Length >= MaxCompressionFileSize)
+                        ErrorProgress.Report("Stream length is too bit and cant be compressed to memory");
+
+                    ConsoleProgress.Report("Compressing file please wait");
+
+                    long originalFileSize = stream.Length;
+
+                    var tempNewStream = new MemoryStream();
+                    using (Stream origStream = stream)
+                    using (var compStream = new BrotliStream(tempNewStream, (CompressionLevel)level, true))
+                    {
+                        int bytesRead;
+                        long totalRead = 0;
+
+                        byte[] buffer = new byte[Math.Max(origStream.Length / (100 * 2), 1)];
+                       
+                        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                        {
+                            await compStream.WriteAsync(buffer, 0, bytesRead);
+
+                            totalRead += bytesRead;
+
+                            double percentage = (double)totalRead / originalFileSize * 100;
+
+                            string line = $"Compressing file please wait: {percentage.ToString("0.0")}%";
+
+                            ConsoleProgress.Report(line);
+                        }
+
+                        await compStream.FlushAsync();
+                    }
+
+                    long compressedSize = tempNewStream.Length;
+                    ConsoleProgress.Report("File compressed " + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + "% compress ratio new size " + ByteSizeToString(compressedSize) + " from " + ByteSizeToString(originalFileSize));
+                    ConsoleProgress.Report("");
+                    stream = tempNewStream;
+                    stream.Position = 0;
+                }
+
                 ByteConfig config = new ByteConfig() { Compression = compress, VersionNumber = 2 };
 
                 bw.Write(config.ToByte());
@@ -178,20 +198,18 @@ namespace DSFiles_Shared
                 List<ulong> attachmentsIdsList = new();
                 List<ulong> messagesIdsList = [];
 
-                using StreamWriter tempIdsWriter = UnsendedIdsWriter;
-
                 long totalWrited = 0;
 
-                Console.WriteLine("Starting upload of " + (compress ? "maximum " : null) + messagesToSend + " chunks (" + ByteSizeToString(stream.Length) + ')');
-                Console.WriteLine();
+                ConsoleProgress.Report("Starting upload of " + (compress ? "maximum " : null) + messagesToSend + " chunks (" + ByteSizeToString(stream.Length) + ')');
+                ConsoleProgress.Report("");
 
                 sw.Start();
 
-                byte[] key = RandomNumberGenerator.GetBytes(32);
+                byte[] key = RandomNumberGenerator.GetBytes(10);
 
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
-                    var postChunk = (byte[] buffer, int count, int index) =>
+                    var postChunk = async (byte[] buffer, int count, int index) =>
                     {
                         string attachementName = EncodeAttachementName(webHook.channelId, index, messagesToSend);
 
@@ -201,7 +219,7 @@ namespace DSFiles_Shared
                         {
                             try
                             {
-                                response = JsonNode.Parse(webHook.PostFileToWebhook(attachementName, buffer, 0, count).Result);
+                                response = JsonNode.Parse(await webHook.PostFileToWebhook(attachementName, buffer, 0, count));
 
                                 ulong attachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                                 ulong messageId = ulong.Parse((string)response["id"]);
@@ -230,14 +248,14 @@ namespace DSFiles_Shared
                         long average = (timeList.Sum() / timeList.Count);
                         long totalTime = (messagesToSend - index - 1) * average;
 
-                        Console.WriteLine("Uploaded " + messagesSended + (!compress ? "/" + messagesToSend : null) + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
+                        ConsoleProgress.Report("Uploaded " + messagesSended + (!compress ? "/" + messagesToSend : null) + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
                         if (sw.ElapsedMilliseconds < 2000) Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
 
                     int i = 0;
 
-                    if (compress)
+                    /*if (compress)
                     {
                         var pendingBuffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE + IOBuffer);
                         int pendingCount = 0;
@@ -281,12 +299,20 @@ namespace DSFiles_Shared
                                         if (status == OperationStatus.Done)
                                             break;
 
-                                        if (status == OperationStatus.NeedMoreData)
+                                        else if (status == OperationStatus.NeedMoreData)
                                         {
                                             inputSpan = inputSpan.Slice(consumed);
-                                            break;
+
+                                            if (!inputSpan.IsEmpty)
+                                            {
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                break;
+                                            }
                                         }
-                                        if (status == OperationStatus.DestinationTooSmall)
+                                        else if (status == OperationStatus.DestinationTooSmall)
                                         {
                                             inputSpan = inputSpan.Slice(consumed);
                                             continue;
@@ -337,15 +363,17 @@ namespace DSFiles_Shared
                     }
                     else
                     {
-                        byte[] buffer = new byte[CHUNK_SIZE];
+                        
+                    }*/
 
-                        for (int f = 0; f < messagesToSend; f++)
-                        {
-                            int bytesReaded = await stream.ReadAsync(buffer, 0, buffer.Length);
-                            ts.Encode(buffer, bytesReaded);
-                            postChunk(buffer, bytesReaded, f);
-                            sw.Restart();
-                        }
+                    byte[] buffer = new byte[CHUNK_SIZE];
+
+                    for (int f = 0; f < messagesToSend; f++)
+                    {
+                        int bytesReaded = await stream.ReadAsync(buffer, 0, buffer.Length);
+                        ts.Encode(buffer, bytesReaded);
+                        await postChunk(buffer, bytesReaded, f);
+                        sw.Restart();
                     }
                 }
 
@@ -353,7 +381,7 @@ namespace DSFiles_Shared
 
                 tempIdsWriter.BaseStream.SetLength(0);
 
-                Console.WriteLine();
+                ConsoleProgress.Report("");
 
                 bw.Write(new GorillaTimestampCompressor().Compress(attachmentsIdsList.ToArray()));
 
@@ -366,7 +394,7 @@ namespace DSFiles_Shared
                 return new Upload(name, seedData.ToArray().Deflate(), key, new GorillaTimestampCompressor().Compress(messagesIdsList.ToArray()), ref webHook);
             }
         }
-      
+
         /// <summary>
         /// Decode part
         /// </summary>
@@ -375,11 +403,11 @@ namespace DSFiles_Shared
         /// <returns></returns>
         public const int RefreshUrlsChunkSize = 50;
 
-        public static async Task<ByteConfig> Decode(byte[] seed, byte[] key, Stream stream) => await DecodeCore(seed, key, stream);
+        public static async Task<ByteConfig> Decode(byte[] seed, byte[]? key, Stream stream) => await DecodeCore(seed, key, stream);
 
-        public static async Task<ByteConfig> Decode(string seed, byte[] key, Stream stream) => await DecodeCore(seed.FromBase64Url(), key, stream);
+        public static async Task<ByteConfig> Decode(string seed, byte[]? key, Stream stream) => await DecodeCore(seed.FromBase64Url(), key, stream);
 
-        private static async Task<ByteConfig> DecodeCore(byte[] seed, byte[] key, Stream stream)
+        private static async Task<ByteConfig> DecodeCore(byte[] seed, byte[]? key, Stream stream)
         {
             using (MemoryStream seedData = new MemoryStream(seed.Inflate()))
             using (BinaryReader br = new BinaryReader(seedData))
@@ -392,19 +420,18 @@ namespace DSFiles_Shared
                 ulong[] attachmentsId = new GorillaTimestampCompressor().Decompress(br.ReadBytes((int)seedData.Length - (sizeof(ulong) + sizeof(long)) - sizeof(bool)));
 
                 int attachments = attachmentsId.Length;
-                long aproxSize = attachments * CHUNK_SIZE;
 
                 //Stream? outputStream = config.Compression ? StreamCompression.GetCompressorStream((ulong)aproxSize * 2) : stream;
 
-                Console.WriteLine("Downloading " + ByteSizeToString(totalSize) + '\n');
+                ConsoleProgress.Report("Downloading " + ByteSizeToString(totalSize) + "\n\n");
 
                 string[] attachmentsUrls = attachmentsId.Select((id, index) => $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, index, (int)(totalSize / CHUNK_SIZE) + 1)}").ToArray();
 
                 sw.Start();
 
-                
-                const int OutputBufferSize = 64 * 1024;
+                const int OutputBufferSize = (10 * 1024 * 1024) * 2;
 
+                using (MemoryStream decoderCache = new MemoryStream())
                 using (BrotliDecoder decoder = new BrotliDecoder())
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
@@ -427,7 +454,7 @@ namespace DSFiles_Shared
                             {
                                 try
                                 {
-                                    Console.Write($"Downloading id {attachmentsId[e]} {e + 1}/{attachments}");
+                                    ConsoleProgress.Report($"Downloading id {attachmentsId[e]} {e + 1}/{attachments}");
 
                                     chunk = await client.GetByteArrayAsync(url);
                                     ts.Encode(chunk, chunk.Length);
@@ -443,39 +470,36 @@ namespace DSFiles_Shared
 
                                 if (config.Compression)
                                 {
-                                    var outputBuffer = new ArrayBufferWriter<byte>(chunk.Length * 2);
-                                    ReadOnlySpan<byte> span = chunk;
+                                    decoderCache.Write(chunk);
 
-                                    while (!span.IsEmpty)
+                                    while (decoderCache.Length > 0)
                                     {
                                         byte[] outBuf = ArrayPool<byte>.Shared.Rent(OutputBufferSize);
+
                                         try
                                         {
                                             var status = decoder.Decompress(
-                                                span,
+                                                decoderCache.ToArray(),
                                                 outBuf,
                                                 out int bytesConsumed,
                                                 out int bytesWritten
                                             );
+
+                                            decoderCache.RemoveFromStart(bytesConsumed);
+                                            stream.Write(outBuf, 0, bytesWritten);
+
                                             if (status == OperationStatus.InvalidData)
                                                 throw new InvalidDataException("Invalid Brotli data.");
-
-                                            // Copy the decompressed bytes into our buffer
-                                            outputBuffer.Write(outBuf.AsSpan(0, bytesWritten));
-
-                                            // Advance the span
-                                            span = span.Slice(bytesConsumed);
-
-                                            if (status == OperationStatus.NeedMoreData)
+                                            else if (status == OperationStatus.NeedMoreData)
                                                 break;
+                                            else if (status == OperationStatus.DestinationTooSmall)
+                                                throw new InvalidOperationException("Output buffer is too small for brotli output.");
                                         }
                                         finally
                                         {
                                             ArrayPool<byte>.Shared.Return(outBuf);
                                         }
                                     }
-
-                                    await stream.WriteAsync(outputBuffer.WrittenMemory);
                                 }
                                 else
                                 {
@@ -490,7 +514,7 @@ namespace DSFiles_Shared
                             long average = (timeList.Sum() / timeList.Count);
                             long totalTime = (attachments - e) * average;
 
-                            Console.WriteLine(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
+                            ConsoleProgress.Report(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + '\n');
 
                             //var decoded = dataPart;// U(dataPart, XorKey);
                             //await stream.WriteAsync(decoded, 0, dataPart.Length);
@@ -501,9 +525,7 @@ namespace DSFiles_Shared
                         part += RefreshUrlsChunkSize;
                     }
 
-                    Console.WriteLine();
-
-                    Console.WriteLine("File downloaded");
+                    ConsoleProgress.Report("\n\nFile downloaded\n");
                 }
 
                 sw.Stop();
@@ -511,7 +533,7 @@ namespace DSFiles_Shared
                 return config;
             }
         }
-        public static Stream DecodeCorePipe(byte[] seed, byte[] key)
+        public static Stream DecodeCorePipe(byte[] seed, byte[]? key)
         {
             var pipe = new Pipe();
 
@@ -530,13 +552,13 @@ namespace DSFiles_Shared
 
             return pipe.Reader.AsStream();
         }
-
-
         private static void WriteException(ref Exception ex, params string[] messages)
         {
             var lastColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(string.Join('\n', messages.Where(m => !string.IsNullOrEmpty(m))) + '\n' + ex.ToString() + '\n');
+
+            ConsoleProgress.Report(string.Join('\n', messages.Where(m => !string.IsNullOrEmpty(m))) + '\n' + ex.ToString() + '\n');
+            Console.WriteLine();
             Console.ForegroundColor = lastColor;
         }
 
@@ -588,7 +610,6 @@ namespace DSFiles_Shared
                 sb.AppendLine($"`WebLink:` {this.WebLink}");
 
                 this.UploadLog = sb.ToString();
-
 
                 webHookHelper.SendMessageInChunks(string.Join("\n", this.UploadLog.Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
             }
@@ -653,11 +674,10 @@ namespace DSFiles_Shared
                 var results = new List<ulong>();
                 _in = new BitReader(compressed);
 
-                // 1) Read first timestamp in full
                 _prevValue = _in.ReadBits(62);
                 results.Add(_prevValue);
 
-                _prevDelta = PrecomputedDelta;  // Δ₀ = 0
+                _prevDelta = PrecomputedDelta;
 
                 while (_in.BitsLeft >= 30)
                 {
@@ -691,7 +711,6 @@ namespace DSFiles_Shared
             }*/
             private void WriteDod(long v)
             {
-                // ZigZag‐encode to unsigned
                 ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
 
                 //Console.Write($"[WriteDod] dod={v} uv=0x{uv:X}");

@@ -1,14 +1,23 @@
-﻿using DSFiles_Client.Helpers;
+﻿using DSFiles_Client.CGuis;
+using DSFiles_Client.Helpers;
 using DSFiles_Shared;
 using JSPasteNet;
 using Microsoft.Win32;
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Security;
 using System.Security.Cryptography;
 using System.Security.Principal;
-using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+using Terminal.Gui;
+using Application = Terminal.Gui.App.Application;
+using Clipboard = Terminal.Gui.App.Clipboard;
 using CompressionLevel = System.IO.Compression.CompressionLevel;
 using File = System.IO.File;
 
@@ -22,31 +31,45 @@ namespace DSFiles_Client
         {
             try
             {
-                string? currentDir = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location);
+                string currentDir = AppContext.BaseDirectory;
 
                 Directory.SetCurrentDirectory(currentDir);
 
-                string[] paths = [Path.Combine(currentDir, "logs")];
+                string[] paths = [Path.Combine(currentDir, LogsFolder)];
 
                 foreach (var path in paths)
                 {
-                    if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+                    if (!Directory.Exists(path))
+                        Directory.CreateDirectory(path);
+                }
+
+                string[] files = [UploadedFiles];
+
+                foreach (var file in files)
+                {
+                    if (!File.Exists(file))
+                        File.WriteAllText(file,"");
                 }
 
                 return true;
             }
-            catch { }
+            catch (Exception ex) 
+            {
+                Console.WriteLine(ex.ToString());
+            }
 
             return false;
         }
 
         private const string URLProtocol = "DSFILES";
 
-        private const string WebHookFileName = "logs\\webHook.dat";
+        private const string LogsFolder = "logs";
 
-        private const string UploadedFiles = "logs\\uploaded.log";
+        public const string WebHookFileName = LogsFolder + "\\webHook.dat";
 
-        private const string Debug = "logs\\debug.log";
+        public const string UploadedFiles = LogsFolder + "\\uploaded.log";
+
+        private const string Debug = LogsFolder + "\\debug.log";
 
         public static string? API_TOKEN { get; set; }
 
@@ -66,7 +89,7 @@ namespace DSFiles_Client
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
         };
 
-        private static string GetFromJspaste(string data)
+        public static string GetFromJspaste(string data)
         {
             return JSPasteClient.Get(data.Split('/').Last(), "hola").Result
                .Split('\n')
@@ -76,7 +99,7 @@ namespace DSFiles_Client
 
         private static string sevenZipPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"7-Zip\");
 
-        private static void SevenZipPaths(string outputFile, CompressionLevel compressionLevel, params string[] paths)
+        public static void SevenZipPaths(string outputFile, CompressionLevel compressionLevel, params string[] paths)
         {
             if (!File.Exists(Path.Combine(sevenZipPath, "7z.dll")))
             {
@@ -90,7 +113,7 @@ namespace DSFiles_Client
                     RedirectStandardError = false,
                     RedirectStandardInput = false,
                     RedirectStandardOutput = false,
-                    UseShellExecute = false,
+                    UseShellExecute = true,
                 }).WaitForExit();
             }
 
@@ -129,7 +152,7 @@ namespace DSFiles_Client
         [STAThread]
         private static void Main(string[] args)
         {
-            //args = ["C:\\Users\\Mrgaton\\Downloads\\The Amazing World of Gumball - Teri's J-Pop Music Video_419.mp4"];
+            Console.Title = "Dsfiles Manager";
 
             if (args.Length > 0 && args[0].StartsWith($"{URLProtocol}://", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -221,7 +244,7 @@ namespace DSFiles_Client
 
             if (args.Length > 0 && args[0] == "ask_upload")
             {
-                OpenFileDialog ofd = new OpenFileDialog()
+                OpenFileDialog ofd = new  OpenFileDialog()
                 {
                     ValidateNames = false,
                     CheckFileExists = false,
@@ -231,12 +254,14 @@ namespace DSFiles_Client
                     FileName = "Upload Selection."
                 };
 
-                if (ofd.ShowDialog() != DialogResult.OK) return;
+                if (ofd.ShowDialog() != DialogResult.OK)
+                    return;
 
                 args = ofd.FileNames;
             }
 
-            if (!DirSetted) throw new IOException("What?");
+            if (!DirSetted) 
+                throw new IOException("What?");
 
             if (!Debugger.IsAttached)
             {
@@ -247,8 +272,6 @@ namespace DSFiles_Client
                     Console.ReadKey();
                 };
             }
-
-
 
 #if DEBUG
             /*if(args.Length ==0)
@@ -263,18 +286,15 @@ namespace DSFiles_Client
                     RedirectStandardInput = true,
                 });
 
-                using(FileStream fs = File.OpenRead("C:\\Users\\Mrgaton\\Downloads\\SideQuest-Setup-0.10.42-x64-win.exe"))
                 {
                     fs.CopyTo(du.StandardInput.BaseStream);
                 }
 
                 du.StandardInput.BaseStream.Close();
 
-
                 du.WaitForExit();
                 Environment.Exit(0);
             }*/
-
 
             if (args.Length > 0 && args[0].StartsWith('/'))
             {
@@ -318,8 +338,6 @@ namespace DSFiles_Client
             }
 #endif
 
-            //args = ["C:\\Users\\Mrgaton\\Downloads\\🏆 SuperX： Challenge the $300,000 prize pool (9_4_2025 22：55：28).html"];
-
             args = args.Select(arg => arg.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase) ? GetFromJspaste(arg) : arg).ToArray();
 
             //Console.WriteLine(string.Join(" ", args));
@@ -332,7 +350,9 @@ namespace DSFiles_Client
             }
             catch { }
 
-            Console.ForegroundColor = ConsoleColor.White;
+            //Console.ForegroundColor = ConsoleColor.White;
+
+            //args = ["-pipe", "aupo-sEAAiYMTpNZn67h9JFLuH-TgeEM$W6SJUVAbZ5q5NsciKvczrCB8RelG_OXbBr5uscCXuOo", "test.html"];
 
             if (args.Length > 1)
             {
@@ -347,7 +367,7 @@ namespace DSFiles_Client
 
                         webHookHelper = new WebHookHelper(client, BitConverter.ToUInt64(splited[1].FromBase64Url()), splited[2]);
 
-                        ulong[] ids = new DiscordFilesSpliter.GorillaTimestampCompressor().Decompress(splited[0].FromBase64Url().Inflate());
+                        ulong[] ids = new DiscordFilesSpliter.GorillaTimestampCompressor().Decompress(splited[0].FromBase64Url());
 
                         Console.WriteLine("Removing file chunks (" + ids.Length + ")");
 
@@ -382,17 +402,19 @@ namespace DSFiles_Client
                         }
                         return;
 
-                        /* case "-pipe": // Ussage -pipe {filename}
+                    case "-pipe": // Ussage -pipe {filename}
+                        using (FileStream fs = File.Open(args[2], FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+                        {
+                            splited = args[1].Split('/')[0].Split(':').Last().Split('$');
 
-                             using (Stream pipeStream = Console.OpenStandardInput())
-                             {
-                                 var result = DiscordFilesSpliter.Encode(webHookHelper, Path.GetFileName(args[1]), pipeStream).GetAwaiter().GetResult();
+                            using (var s = DiscordFilesSpliter.DecodeCorePipe(splited[0].FromBase64Url(), (splited.Length > 1 ? splited[1].FromBase64Url() : null)))
+                            {
+                                Console.Write("Coping to : " + fs.Handle);
 
-                                 UploadedFilesWriter.WriteLine(result.UploadLog);
-
-                                 Console.Write("FileSeed: " + result.Shortened ?? result.Seed);
-                             }
-                             return;*/
+                                s.CopyTo(fs);
+                            }
+                        }
+                        return;
                 }
             }
 
@@ -436,7 +458,6 @@ namespace DSFiles_Client
 
             //Console.WriteLine(Combine4Bits(16,13));
 
-            //byte[] data = File.ReadAllBytes("C:\\Users\\Mrgaton\\Downloads\\Windows10_InsiderPreview_Client_x64_es-es_19045.1826.iso");
 
             // byte[] dataToUpload = File.ReadAllBytes("C:\\Users\\gatoncio\\Downloads\\Windows11_InsiderPreview_Client_x64_es-es_22631.iso");
 
@@ -444,11 +465,18 @@ namespace DSFiles_Client
 
             //DiscordFilesSpliter.Decode("AB8AxLihWC8OAmEBjAxyrQ4pIhhGUG8iGSpQACIVIFCCIhQJINUiBaUgeA", "claro2.msi").GetAwaiter().GetResult();
 
+
+
             if (args.Length > 0)
             {
                 if (!File.Exists(WebHookFileName))
                 {
-                    string cp = Clipboard.GetText().Trim();
+                    if (!Clipboard.TryGetClipboardData(out string webHookData))
+                    {
+                        throw new Exception("Could not get clipboard data");
+                    }
+
+                    string cp = webHookData.Trim();
 
                     if (cp.Contains("https://", StringComparison.InvariantCultureIgnoreCase) && cp.Contains("webhook", StringComparison.InvariantCultureIgnoreCase))
                     {
@@ -472,7 +500,7 @@ namespace DSFiles_Client
 
                 if (args.Length == 1 && Directory.Exists(filePath)) args = args.Concat([""]).ToArray();
 
-                int compLevel = 0;
+                CompressionLevel compLevel = CompressionLevel.NoCompression;
 
                 Stream? stream = null;
 
@@ -487,8 +515,6 @@ namespace DSFiles_Client
                     string rootPath = ZipCompressor.GetRootPath(args);
 
                     Console.WriteLine("Compressing files please wait\n");
-
-                    var compressionLevel = DiscordFilesSpliter.ShouldCompress(null, 0, false);
 
                     string archivedPath = Path.GetTempFileName();
 
@@ -533,11 +559,7 @@ namespace DSFiles_Client
 
                 UploadedFilesWriter.WriteLine(result.UploadLog);
 
-                try
-                {
-                    Clipboard.SetText(result.WebLink);
-                }
-                catch { }
+                Clipboard.TrySetClipboardData(result.WebLink);
 
                 Console.WriteLine("WebLink: " + result.WebLink + '\n');
                 Console.Write("FileSeed: " + result.Shortened);
@@ -547,56 +569,68 @@ namespace DSFiles_Client
                 Environment.Exit(0);
             }
 
-            Console.WriteLine("Write the seed of the file you want to download");
-            Console.WriteLine();
-            Console.Write("Seed:");
+            Application.Init();
 
-            string? fileData = Console.ReadLine().Trim();
-
-            if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = GetFromJspaste(fileData); //JSPasteClient.Get(fileData.Split('/').Last()).Result;
-
-            //Console.WriteLine(fileData);
-
-            string[] fileDataSplited = fileData.Split('/')[0].Split(':');
-
-            string[] seedSplited = fileDataSplited.Last().Split('$');
-
-            byte[] seed = seedSplited[0].FromBase64Url();
-            byte[]? key = seedSplited.Length > 1 ? seedSplited[1].FromBase64Url() : null;
-
-            string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
-
-            SaveFileDialog sfd = new SaveFileDialog()
+            try
             {
-                FileName = destFileName,
-                ShowHiddenFiles = true,
-            };
-
-            if (sfd.ShowDialog() == DialogResult.OK)
-            {
-                string filename = sfd.FileName;
-
-                Console.WriteLine();
-
-                using (FileStream fs = File.Open(filename, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
-                {
-                    DiscordFilesSpliter.Decode(seed, key, fs).GetAwaiter().GetResult();
-                }
+                //Console.OutputEncoding = Encoding.UTF8;
+                Application.Run(new Main());
             }
-            else
+            finally
             {
-                Console.WriteLine("\nOperation cancelled");
-                Thread.Sleep(2000);
-                Environment.Exit(0);
+                Application.Shutdown();
             }
 
-            //byte[] fileSeed = Convert.FromBase64String("AQMgxMbmo5kPC0BEaaeFEhAUUEQAq4USEB4whI2uhRIQCgDEV7GFEhA=");
+            /* Console.WriteLine("Write the seed of the file you want to download");
+             Console.WriteLine();
+             Console.Write("Seed:");
 
-            //WFIMEncoder.Decode(fileSeed, "resultado.zip").GetAwaiter().GetResult();
+             string? fileData = Console.ReadLine().Trim();
 
-            //Console.WriteLine(Convert.ToBase64String(WFIMEncoder.Decode(fileSeed).Result).ToString());
+             if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = GetFromJspaste(fileData); //JSPasteClient.Get(fileData.Split('/').Last()).Result;
 
-            Console.ReadLine();
+             //Console.WriteLine(fileData);
+
+             string[] fileDataSplited = fileData.Split('/')[0].Split(':');
+
+             string[] seedSplited = fileDataSplited.Last().Split('$');
+
+             byte[] seed = seedSplited[0].FromBase64Url();
+             byte[]? key = seedSplited.Length > 1 ? seedSplited[1].FromBase64Url() : null;
+
+             string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
+
+             SaveFileDialog sfd = new SaveFileDialog()
+             {
+                 FileName = destFileName,
+                 ShowHiddenFiles = true,
+             };
+
+             if (sfd.ShowDialog() == DialogResult.OK)
+             {
+                 string filename = sfd.FileName;
+
+                 Console.WriteLine();
+
+                 using (FileStream fs = File.Open(filename, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+                 {
+                     DiscordFilesSpliter.Decode(seed, key, fs).GetAwaiter().GetResult();
+                 }
+             }
+             else
+             {
+                 Console.WriteLine("\nOperation cancelled");
+                 Thread.Sleep(2000);
+                 Environment.Exit(0);
+             }
+
+             //byte[] fileSeed = Convert.FromBase64String("AQMgxMbmo5kPC0BEaaeFEhAUUEQAq4USEB4whI2uhRIQCgDEV7GFEhA=");
+
+             //WFIMEncoder.Decode(fileSeed, "resultado.zip").GetAwaiter().GetResult();
+
+             //Console.WriteLine(Convert.ToBase64String(WFIMEncoder.Decode(fileSeed).Result).ToString());
+
+             //Console.ReadLine();*/
         }
 
         public static void WriteException(ref Exception ex, params string[] messages)
