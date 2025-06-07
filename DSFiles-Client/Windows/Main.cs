@@ -1,5 +1,4 @@
 ﻿using DSFiles_Client.Helpers;
-using DSFiles_Client.Windows;
 using DSFiles_Shared;
 using System;
 using System.IO;
@@ -18,7 +17,7 @@ namespace DSFiles_Client.CGuis
         {
             InitializeComponent();
 
-            SetScheme(ColorSchemes.Main);
+            SetScheme(WindowsHelper.MainColors);
 
             downloadButton.Accepting += (s, e) =>
             {
@@ -86,16 +85,7 @@ namespace DSFiles_Client.CGuis
                             }
                         }
 
-                        var progress = new Progress<string>((s) =>
-                        {
-                            foreach (var line in s.Split('\n'))
-                            {
-                                var content = line.Replace("\r", "");
-
-                                Progress.logs.Add(string.IsNullOrEmpty(content) ? " " : content);
-                                Progress.logsView.MoveEnd();
-                            }
-                        });
+                        var progress = WindowsHelper.GetProgress();
 
                         var paths = ofd.FileNames;
 

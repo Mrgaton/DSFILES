@@ -1,11 +1,13 @@
-﻿using Terminal.Gui;
+﻿using DSFiles_Client.CGuis;
+using System;
 using Terminal.Gui.Drawing;
+using Attribute = Terminal.Gui.Drawing.Attribute;
 
-namespace DSFiles_Client.Windows
+namespace DSFiles_Client.Helpers
 {
-    internal class ColorSchemes
+    internal class WindowsHelper
     {
-        public static Scheme Main = new Scheme()
+        public static Scheme MainColors = new Scheme()
         {
             // Text on dark slate background
             Normal = new Attribute(Color.Parse("#ECEFF4"), Color.Parse("#2E3440")),
@@ -22,5 +24,19 @@ namespace DSFiles_Client.Windows
             // Warm orange for hot (but unfocused) highlights
             HotNormal = new Attribute(Color.Parse("#D08770"), Color.Parse("#3B4252")),
         };
-    }
+
+        public static Progress<string> GetProgress()
+        {
+            return new Progress<string>((s) =>
+            {
+                foreach (var line in s.Split('\n'))
+                {
+                    var content = line.Replace("\r", "");
+
+                    Progress.logs.Add(string.IsNullOrEmpty(content) ? " " : content);
+                    Progress.logsView.MoveEnd();
+                }
+            });
+        }
+    } 
 }

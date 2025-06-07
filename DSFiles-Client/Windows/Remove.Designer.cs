@@ -1,9 +1,9 @@
-﻿using DSFiles_Client.Windows;
+﻿using DSFiles_Client.Helpers;
 using System;
-using Terminal.Gui.ViewBase;
-using Terminal.Gui.Views;
 using Terminal.Gui.App;
 using Terminal.Gui.Drawing;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 
 namespace DSFiles_Client.CGuis
 {
@@ -16,7 +16,7 @@ namespace DSFiles_Client.CGuis
             Width = Dim.Fill();
             Height = Dim.Fill();
 
-            SetScheme(ColorSchemes.Main);
+            SetScheme(WindowsHelper.MainColors);
 
             Title = "DSFILES";
 

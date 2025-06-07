@@ -1,7 +1,8 @@
-﻿using DSFiles_Client.Windows;
+﻿using DSFiles_Client.Helpers;
 using System;
 using System.Collections.ObjectModel;
 using Terminal.Gui;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
@@ -17,7 +18,7 @@ namespace DSFiles_Client.CGuis
             Width = Dim.Fill();
             Height = Dim.Fill();
 
-            SetScheme(ColorSchemes.Main);
+            SetScheme(WindowsHelper.MainColors);
 
             Title = "DSFILES";
 
@@ -59,7 +60,13 @@ namespace DSFiles_Client.CGuis
                 Source = new ListWrapper<string>(logs)
             };
 
-            logsView.SetScheme(ColorSchemes.Main);
+            logsView.SetScheme(new Terminal.Gui.Drawing.Scheme()
+            {
+                Normal = new Terminal.Gui.Drawing.Attribute(Color.White,StandardColor.Black)
+            });
+
+
+            //logsView.SetScheme(ColorSchemes.Main);
 
             Add(infoLabel, logsView);
         }

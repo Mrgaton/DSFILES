@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Web;
 
 namespace DSFiles_Shared
 {
@@ -43,6 +44,7 @@ namespace DSFiles_Shared
 
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = url).Result)
             {
+              
                 if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
 
                 ParseJson(response.Content.ReadAsStringAsync().Result);
@@ -97,7 +99,7 @@ namespace DSFiles_Shared
         public async Task<HttpStatusCode> SendMessage(string content, string username) => await SendMessage(content, username, "");
 
         public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => 
-            (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + (content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
+            (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + HttpUtility.JavaScriptStringEncode(content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
 
         public async Task<string> GetMessage(ulong id) => await (await MakeRequest(HttpMethod.Get, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
@@ -113,7 +115,7 @@ namespace DSFiles_Shared
 
                 retry:
 
-                p.Report("Removing message id: " + id + '\n');
+                p.Report("Removing message id: " + id);
 
                 var result = await RemoveMessage(id);
 
@@ -123,7 +125,7 @@ namespace DSFiles_Shared
 
                     if (json["retry_after"] != null)
                     {
-                        Thread.Sleep((int)((double)json["retry_after"] * 1000) + 1);
+                        await Task.Delay((int)((double)json["retry_after"] * 1000) + 1);
                         goto retry;
                     }
                     else if (!string.IsNullOrEmpty(json.ToString()))
@@ -137,7 +139,7 @@ namespace DSFiles_Shared
                 }
             }
 
-            p.Report("\nDone deleting messages\n");
+            p.Report("\nDone deleting messages");
         }
 
         public struct FileData

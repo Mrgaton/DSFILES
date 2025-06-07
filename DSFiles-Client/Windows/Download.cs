@@ -57,11 +57,8 @@ namespace DSFiles_Client.CGuis
 
                 Application.Run(new Progress(new Action(async () =>
                 {
-                    DiscordFilesSpliter.ConsoleProgress = new Progress<string>((s) =>
-                    {
-                        Progress.logs.Add(s.Replace("\n", "").Replace("\r", ""));
-                    });
-                    
+                    DiscordFilesSpliter.ConsoleProgress = WindowsHelper.GetProgress();
+
                     string filename = sfd.FileName;
 
                     Console.WriteLine();

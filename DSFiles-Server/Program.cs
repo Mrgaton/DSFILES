@@ -238,20 +238,6 @@ namespace DSFiles_Server
                 }
             }
 
-
-            bool debug = Debugger.IsAttached;
-
-            if (!debug)
-            {
-                SentrySdk.Init(o =>
-                {
-                    o.Dsn = "https://5a58b08aca581b0c7d6b0ef79aedd518@o4507580376219648.ingest.us.sentry.io/4507580379889664";
-                    o.Debug = debug;
-                    o.TracesSampleRate = 1.0;
-                    o.AddEntityFramework();
-                });
-            }
-
             /*var builder = WebApplication.CreateBuilder(args);
 
             builder.WebHost.ConfigureKestrel((context, options) =>

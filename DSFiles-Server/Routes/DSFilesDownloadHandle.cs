@@ -148,14 +148,14 @@ namespace DSFiles_Server.Routes
 
                 if (ids.Length > 2)
                 {
+                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+
                     if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
                     {
                         res.ContentType = "text/html; charset=utf-8";
-                        //res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
+                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
                         return;
                     }
-
-                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
                 }
                 else
                 {
@@ -347,6 +347,7 @@ namespace DSFiles_Server.Routes
                         res.Send(ex.ToString());
                         return;
                     }
+
                     part += RefreshUrlsChunkSize;
                 }
             }

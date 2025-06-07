@@ -1,12 +1,12 @@
-﻿using DSFiles_Client.Windows;
+﻿using DSFiles_Client.Helpers;
 using System;
 using Terminal.Gui;
 using Terminal.Gui.App;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drawing;
-using Terminal.Gui.Views;
-using Terminal.Gui.ViewBase;
 using Terminal.Gui.Input;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 
 namespace DSFiles_Client.CGuis
 {
@@ -22,7 +22,7 @@ namespace DSFiles_Client.CGuis
 
             Title = "DSFiles Files Manager";
 
-            SetScheme(ColorSchemes.Main);
+            SetScheme(WindowsHelper.MainColors);
 
             ShadowStyle = ShadowStyle.Transparent;
 

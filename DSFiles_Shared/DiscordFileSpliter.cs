@@ -60,17 +60,16 @@ namespace DSFiles_Shared
                 }
             }
         }
-
-        private static string[] blackListedExt = [".zip", ".7z", ".rar", ".mp4", ".avif", ".avi", ".png", ".jpg", ".iso"];
-
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
-     
+       
+        private static readonly string[] blackListedExt = new string[] { ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".epub", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".svgz", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" };
+
         public static bool IsCompresable(string? ext, long filesize)
         {
             if (filesize > MaxCompressionFileSize) 
                 return false;
 
-            return blackListedExt.Any(e => e == ext);
+            return blackListedExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
         }
         public static CompressionLevel ShouldCompress(string? ext, long filesize)
         {
@@ -470,7 +469,7 @@ namespace DSFiles_Shared
 
                                 if (config.Compression)
                                 {
-                                    decoderCache.Write(chunk);
+                                    await decoderCache.WriteAsync(chunk);
 
                                     while (decoderCache.Length > 0)
                                     {
@@ -486,7 +485,7 @@ namespace DSFiles_Shared
                                             );
 
                                             decoderCache.RemoveFromStart(bytesConsumed);
-                                            stream.Write(outBuf, 0, bytesWritten);
+                                            await stream.WriteAsync(outBuf, 0, bytesWritten);
 
                                             if (status == OperationStatus.InvalidData)
                                                 throw new InvalidDataException("Invalid Brotli data.");
