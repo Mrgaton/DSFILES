@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace DSFiles_Server.Helpers
 {
-    internal class TenorResolver
+    internal static class TenorResolver
     {
         public static string Resovlve(string url)
         {

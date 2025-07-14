@@ -62,14 +62,14 @@ namespace DSFiles_Shared
         }
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
        
-        private static readonly string[] blackListedExt = new string[] { ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".epub", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".svgz", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" };
+        private static readonly string[] blackListedExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".xpi", ".epub", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".svgz", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" ];
 
         public static bool IsCompresable(string? ext, long filesize)
         {
             if (filesize > MaxCompressionFileSize) 
                 return false;
 
-            return blackListedExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
+            return !blackListedExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
         }
         public static CompressionLevel ShouldCompress(string? ext, long filesize)
         {
@@ -77,14 +77,14 @@ namespace DSFiles_Shared
             {
                 Console.Write("Do you want to compress this file? (you should not compress images, videos, zips or any similar packed or already compressed content) [Y,N]:");
                 
-                char response = GetConsoleKeyChar(['y', 's', 'n']);
+                char response = GetConsoleKeyChar(['y', 's', 'n', 'o']);
                 bool compress = response is 'y' or 's';
 
                 Console.WriteLine('\n');
 
-                if (!compress) return 0;
+                if (!compress) return CompressionLevel.NoCompression;
 
-                Console.Write("Select one of following options (fastest, optimal, smallest size) [F,O,S]:");
+                Console.Write("Select one of following options (fastest L1, optimal L4, smallest size L11) [F,O,S]:");
                 char compressionLevel = GetConsoleKeyChar(['f', 'o', 's']);
                 Console.WriteLine('\n');
 
@@ -112,10 +112,12 @@ namespace DSFiles_Shared
             ConsoleColor oldColor = Console.ForegroundColor;
             Console.ForegroundColor = Console.BackgroundColor;
             char response = char.MinValue;
+
             while ((response = char.ToLower(Console.ReadKey().KeyChar)) != null && !options.Any(c => char.ToLower(c) == response))
             {
                 Console.Write('\b');
             }
+
             Console.ForegroundColor = oldColor;
 
             return response;

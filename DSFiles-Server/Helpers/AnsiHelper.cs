@@ -1,4 +1,4 @@
-internal class AnsiHelper
+internal static class AnsiHelper
 {
     public static string ResetColor() => ("\u001b[0m");
 

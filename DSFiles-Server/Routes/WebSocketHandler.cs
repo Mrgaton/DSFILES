@@ -6,7 +6,7 @@ using System.Text;
 
 namespace DSFiles_Server.Routes
 {
-    internal class WebSocketHandler
+    internal static class WebSocketHandler
     {
         private static ConcurrentDictionary<Int128, List<WebSocket>> clients = new();
 

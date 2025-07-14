@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 
 namespace DSFiles_Server
 {
-    internal class Program
+    internal static class Program
     {
         public static HttpClient client = new HttpClient(new HttpClientHandler()
         {

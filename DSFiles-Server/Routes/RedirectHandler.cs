@@ -4,7 +4,7 @@ using System.Web;
 
 namespace DSFiles_Server.Routes
 {
-    internal class RedirectHandler
+    internal static class RedirectHandler
     {
         public static async Task HandleRedirect(HttpListenerRequest req, HttpListenerResponse res)
         {

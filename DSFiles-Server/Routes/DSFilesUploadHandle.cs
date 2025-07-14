@@ -4,7 +4,7 @@ using System.Net;
 
 namespace DSFiles_Server.Routes
 {
-    internal class DSFilesUploadHandle
+    internal static class DSFilesUploadHandle
     {
         public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
         {

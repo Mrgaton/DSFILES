@@ -5,7 +5,7 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace DSFiles_Client.Helpers
 {
-    internal class WindowsHelper
+    internal static class WindowsHelper
     {
         public static Scheme MainColors = new Scheme()
         {

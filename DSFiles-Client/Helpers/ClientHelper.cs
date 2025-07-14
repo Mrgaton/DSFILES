@@ -2,7 +2,7 @@
 
 namespace DSFiles_Client.Helpers
 {
-    internal class ClientHelper
+    internal static class ClientHelper
     {
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Auto)] private static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, int dwFlags);
 

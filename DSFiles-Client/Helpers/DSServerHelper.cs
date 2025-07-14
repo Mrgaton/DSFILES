@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace DSFiles_Client.Helpers
 {
-    internal class DSServerHelper
+    internal static class DSServerHelper
     {
         public const string API_ENDPOINT = "https://gato.ovh/df";
 

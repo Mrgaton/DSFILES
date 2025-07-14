@@ -23,7 +23,7 @@ using File = System.IO.File;
 
 namespace DSFiles_Client
 {
-    internal class Program
+    internal static class Program
     {
         private static bool DirSetted = SetCurrentDir();
 
@@ -559,7 +559,7 @@ namespace DSFiles_Client
 
                 UploadedFilesWriter.WriteLine(result.UploadLog);
 
-                Clipboard.TrySetClipboardData(result.WebLink);
+                ClipClipboard.SetText(result.WebLink);
 
                 Console.WriteLine("WebLink: " + result.WebLink + '\n');
                 Console.Write("FileSeed: " + result.Shortened);

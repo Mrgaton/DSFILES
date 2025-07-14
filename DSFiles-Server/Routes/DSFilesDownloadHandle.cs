@@ -12,7 +12,7 @@ using static DSFiles_Shared.DiscordFilesSpliter;
 
 namespace DSFiles_Server.Routes
 {
-    internal class DSFilesDownloadHandle
+    internal static class DSFilesDownloadHandle
     {
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {

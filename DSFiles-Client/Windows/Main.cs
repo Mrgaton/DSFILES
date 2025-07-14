@@ -175,7 +175,7 @@ namespace DSFiles_Client.CGuis
 
                             try
                             {
-                                Clipboard.TrySetClipboardData(result.WebLink);
+                                ClipClipboard.SetText(result.WebLink);
                             }
                             catch { }
 

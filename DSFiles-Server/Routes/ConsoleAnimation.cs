@@ -6,7 +6,7 @@ using System.Text;
 
 namespace DSFiles_Server.Routes
 {
-    internal class ConsoleAnimation
+    internal static class ConsoleAnimation
     {
         private static int maxBrightness = 256 * 3;
         private static int colorLessMinCharSetLengh = 1;
@@ -146,7 +146,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
             }
         }
 
-        private static (int[] framesDurration, byte[][] frames) EncodeFrames(ConversorConfig config, MemoryStream stream, Stream compilationInfo)
+        private static (int[] FramesDurration, byte[][] Frames) EncodeFrames(ConversorConfig config, MemoryStream stream, Stream compilationInfo)
         {
             using (var codec = SKCodec.Create(stream))
             {
@@ -174,9 +174,10 @@ mccn | compression = the amount of rgb value that have to change to change the c
                     compilationInfo.Write(ref sb);
 
                     frameDuration = new int[codec.FrameCount];
-                    rawFrames = new byte[codec.FrameCount][];
 
                     int frames = codec.FrameCount / config.FpsDivisor;
+
+                    rawFrames = new byte[frames][];
 
                     for (int i = 0; i < frames; i++)
                     {

@@ -4,7 +4,7 @@ using System.IO.Compression;
 
 namespace DSFiles_Client.Helpers
 {
-    internal class ZipCompressor
+    internal static class ZipCompressor
     {
         public static string GetRootPath(string[] args, params string[] pathArrays)
         {

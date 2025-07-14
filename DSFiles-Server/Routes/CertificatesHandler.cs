@@ -8,11 +8,11 @@ using System.Text.Json;
 
 namespace DSFiles_Server.Routes
 {
-    internal class CertificatesHandler
+    internal static class CertificatesHandler
     {
-        public static ConcurrentDictionary<string, string> certsCache = new();
+        public static ConcurrentDictionary<string, (DateTime notAfter, string json)> CertsCache = new();
 
-        public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 5, int delayMilliseconds = 1000)
+        public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 4, int delayMilliseconds = 1250)
         {
             if (string.IsNullOrWhiteSpace(domain))
             {
@@ -58,7 +58,10 @@ namespace DSFiles_Server.Routes
 
             return null;
         }
-
+        public static string GetCertCacheAge(DateTime notAfter)
+        {
+            return $"public, max-age={(long)Math.Max(0, (notAfter.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)}";
+        }
         public static async Task HandleCertificate(HttpListenerRequest req, HttpListenerResponse res)
         {
             try
@@ -68,10 +71,10 @@ namespace DSFiles_Server.Routes
 
                 res.Headers.Set("content-type", "application/json");
 
-                if (certsCache.TryGetValue(domain, out string cert))
+                if (CertsCache.TryGetValue(domain, out var entry))
                 {
-                    res.AddHeader("Cache-Control", "public, max-age=86300");
-                    res.Send(cert);
+                    res.AddHeader("Cache-Control", GetCertCacheAge(entry.notAfter));
+                    res.Send(entry.json);
                     return;
                 }
 
@@ -86,8 +89,9 @@ namespace DSFiles_Server.Routes
                 };
 
                 var json = JsonSerializer.Serialize(obj);
-                certsCache.TryAdd(domain, json);
-                res.AddHeader("Cache-Control", "public, max-age=86300");
+
+                CertsCache.TryAdd(domain, (cert2.NotAfter, json));
+                res.AddHeader("Cache-Control", GetCertCacheAge(cert2.NotAfter));
                 res.Send(json);
             }
             catch (Exception ex)
