@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  # Cloudflare Tunnel Service
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    env_file: .env.cloudflare
+    restart: always
+    command: tunnel run
+    networks:
+      - DSF-VPC-01
+
+  dsfiles_server:
+    image: mrgaton/dsfiles_server:latest
+    container_name: dsfiles_server
+    env_file: .env.production
+    restart: always
+    networks:
+      - DSF-VPC-01
+
+networks:
+  DSF-VPC-01:
+    external: false
