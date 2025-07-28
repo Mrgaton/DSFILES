@@ -62,14 +62,14 @@ namespace DSFiles_Shared
         }
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
        
-        private static readonly string[] blackListedExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".xpi", ".epub", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".svgz", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" ];
+        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" ];
 
         public static bool IsCompresable(string? ext, long filesize)
         {
             if (filesize > MaxCompressionFileSize) 
                 return false;
 
-            return !blackListedExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
+            return !NonCompresableExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
         }
         public static CompressionLevel ShouldCompress(string? ext, long filesize)
         {

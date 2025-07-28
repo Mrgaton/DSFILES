@@ -73,7 +73,7 @@ namespace DSFiles_Server.Routes
                         }
                         else
                         {
-                            Console.WriteLine($"Message received in pool {poolKey}: {recivedStream.Length}");
+                            //Console.WriteLine($"Message received in pool {poolKey}: {recivedStream.Length}");
 
                             await BroadcastMessage(poolKey, socket, result.MessageType, recivedStream.ToArray());
                         }
