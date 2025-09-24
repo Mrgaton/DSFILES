@@ -12,9 +12,9 @@ namespace DSFiles_Server.Routes
     {
         private static ConcurrentDictionary<Int128, List<WebSocket>> clients = new();
 
-        private static HMACMD5 hmacMd5 = new HMACMD5([85, 214, 56, 99, 11, 252, 114, 201, 11, 89, 211, 226, 219, 113, 129, 104, 232, 155, 165, 63, 106, 217, 143, 207, 46, 150, 254, 60, 152, 32, 153, 6, 181, 3, 102, 141, 168, 198, 142, 179, 39, 231, 110, 172, 252, 153, 246, 1, 245, 230, 22, 202, 219, 100, 214, 162, 3, 228, 197, 41, 158, 229, 215, 136, 86, 201, 122, 138, 214, 45, 141, 154, 198, 55, 38, 166, 231, 154, 177, 45, 194, 48, 232, 64, 95, 209, 96, 144, 177, 244, 11, 3, 175, 199, 79, 202, 31, 31, 99, 171, 176, 96, 151, 114, 182, 251, 183, 68, 9, 25, 231, 30, 42, 122, 73, 140, 228, 49, 145, 22, 178, 230, 218, 28, 250, 131, 97, 67, 216]);
         public static async void HandleWebSocket(HttpListenerWebSocketContext context)
         {
+            using HMACMD5 hmacMd5 = new HMACMD5([85, 214, 56, 99, 11, 252, 114, 201, 11, 89, 211, 226, 219, 113, 129, 104, 232, 155, 165, 63, 106, 217, 143, 207, 46, 150, 254, 60, 152, 32, 153, 6, 181, 3, 102, 141, 168, 198, 142, 179, 39, 231, 110, 172, 252, 153, 246, 1, 245, 230, 22, 202, 219, 100, 214, 162, 3, 228, 197, 41, 158, 229, 215, 136, 86, 201, 122, 138, 214, 45, 141, 154, 198, 55, 38, 166, 231, 154, 177, 45, 194, 48, 232, 64, 95, 209, 96, 144, 177, 244, 11, 3, 175, 199, 79, 202, 31, 31, 99, 171, 176, 96, 151, 114, 182, 251, 183, 68, 9, 25, 231, 30, 42, 122, 73, 140, 228, 49, 145, 22, 178, 230, 218, 28, 250, 131, 97, 67, 216]);
             var poolKey = BitConverter.ToInt128(hmacMd5.ComputeHash(Encoding.UTF8.GetBytes(context.RequestUri.PathAndQuery)), 0);
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
@@ -32,7 +32,7 @@ namespace DSFiles_Server.Routes
 
             pool.Add(socket);
 
-            foreach(var client in pool)
+            foreach (var client in pool)
             {
                 try
                 {
@@ -45,6 +45,7 @@ namespace DSFiles_Server.Routes
             }
 
             _ = HandleClient(socket, poolKey);
+
         }
 
         public static void DisableUtf8Validation(WebSocket webSocket)
