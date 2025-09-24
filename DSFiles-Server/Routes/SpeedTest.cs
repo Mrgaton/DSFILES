@@ -16,12 +16,12 @@ namespace DSFiles_Server.Routes
             if (RandomBuffer == null)
             {
                 RandomBuffer = new byte[16 * 1024 * 1024];
-                random.NextBytes(RandomBuffer);
+                //random.NextBytes(RandomBuffer);
             }
 
             res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
             res.AddHeader("Content-Length", "9223372036854775807");
-            res.AddHeader("Content-Disposition", "attachment; filename=elemento.exe");
+            res.AddHeader("Content-Disposition", "attachment; filename=pato.exe");
             res.ContentType = "application/octet-stream";
             res.ContentLength64 = long.MaxValue;
             res.OutputStream.Write(Header);

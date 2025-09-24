@@ -5,11 +5,13 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.IO.Pipelines;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Web;
+using static AnsiHelper;
 
 namespace DSFiles_Shared
 {
@@ -62,7 +64,7 @@ namespace DSFiles_Shared
         }
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
        
-        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".iso", ".img", ".dmg", ".woff", ".woff2" ];
+        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma" ];
 
         public static bool IsCompresable(string? ext, long filesize)
         {
@@ -148,20 +150,21 @@ namespace DSFiles_Shared
                 if (compress)
                 {
                     if (stream.Length >= MaxCompressionFileSize)
-                        ErrorProgress.Report("Stream length is too bit and cant be compressed to memory");
+                        ErrorProgress.Report("Stream length is too big and can't be compressed to memory");
 
-                    ConsoleProgress.Report("Compressing file please wait");
+                    ConsoleProgress.Report( AnsiColors.Orange + "Compressing file please wait");
 
                     long originalFileSize = stream.Length;
 
                     var tempNewStream = new MemoryStream();
+
                     using (Stream origStream = stream)
                     using (var compStream = new BrotliStream(tempNewStream, (CompressionLevel)level, true))
                     {
                         int bytesRead;
                         long totalRead = 0;
 
-                        byte[] buffer = new byte[Math.Max(origStream.Length / (100 * 2), 1)];
+                        byte[] buffer = new byte[Math.Max(origStream.Length / 100, 1)];
                        
                         while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) != 0)
                         {
@@ -171,16 +174,14 @@ namespace DSFiles_Shared
 
                             double percentage = (double)totalRead / originalFileSize * 100;
 
-                            string line = $"Compressing file please wait: {percentage.ToString("0.0")}%";
-
-                            ConsoleProgress.Report(line);
+                            ConsoleProgress.Report(AnsiColors.DarkYellow + $"Compressing please wait"+AnsiColors.DarkGray+":"+AnsiColors.Silver+ $" {percentage.ToString("0.0")}%");
                         }
 
                         await compStream.FlushAsync();
                     }
 
                     long compressedSize = tempNewStream.Length;
-                    ConsoleProgress.Report("File compressed " + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + "% compress ratio new size " + ByteSizeToString(compressedSize) + " from " + ByteSizeToString(originalFileSize));
+                    ConsoleProgress.Report(AnsiColors.Gold + "\nFile compressed " + AnsiColors.BrightCyan+ Math.Round((compressedSize / (double)originalFileSize) * 100, 3)  + AnsiColors.LightGray+ "%" + AnsiColors.Gold + " compress ratio new size " +AnsiColors.Cyan + ByteSizeToString(compressedSize) + AnsiColors.Gold + " from "+ AnsiColors.Cyan + ByteSizeToString(originalFileSize));
                     ConsoleProgress.Report("");
                     stream = tempNewStream;
                     stream.Position = 0;
@@ -201,12 +202,12 @@ namespace DSFiles_Shared
 
                 long totalWrited = 0;
 
-                ConsoleProgress.Report("Starting upload of " + (compress ? "maximum " : null) + messagesToSend + " chunks (" + ByteSizeToString(stream.Length) + ')');
+                ConsoleProgress.Report(AnsiColors.BrightGreen + "Starting upload of " + AnsiColors.Cyan + (compress ? "maximum " : null) + messagesToSend + AnsiColors.BrightGreen + " chunks " + AnsiColors.DarkGray + "(" + AnsiColors.Cyan + ByteSizeToString(stream.Length) + AnsiColors.DarkGray + ')');
                 ConsoleProgress.Report("");
 
                 sw.Start();
 
-                byte[] key = RandomNumberGenerator.GetBytes(10);
+                byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(8,12));
 
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
@@ -249,7 +250,7 @@ namespace DSFiles_Shared
                         long average = (timeList.Sum() / timeList.Count);
                         long totalTime = (messagesToSend - index - 1) * average;
 
-                        ConsoleProgress.Report("Uploaded " + messagesSended + (!compress ? "/" + messagesToSend : null) + " total writed is " + ByteSizeToString(totalWrited) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
+                        ConsoleProgress.Report(AnsiColors.Gold + "Uploaded " + AnsiColors.Cyan + messagesSended + (!compress ? AnsiColors.Silver+ "/"+ AnsiColors.BrightCyan + messagesToSend : null) + AnsiColors.Gold+ " total writed is " + AnsiColors.Silver + ByteSizeToString(totalWrited) + AnsiColors.Gold + " took " +AnsiColors.BrightBlue + sw.ElapsedMilliseconds + AnsiColors.Gold+ "ms eta " + AnsiColors.LightBlue + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + AnsiColors.Gold + " end "+ AnsiColors.LightGray  + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
                         if (sw.ElapsedMilliseconds < 2000) Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
@@ -420,6 +421,8 @@ namespace DSFiles_Shared
 
                 ulong[] attachmentsId = new GorillaTimestampCompressor().Decompress(br.ReadBytes((int)seedData.Length - (sizeof(ulong) + sizeof(long)) - sizeof(bool)));
 
+                //Console.WriteLine(string.Join("\n", attachmentsId));
+
                 int attachments = attachmentsId.Length;
 
                 //Stream? outputStream = config.Compression ? StreamCompression.GetCompressorStream((ulong)aproxSize * 2) : stream;
@@ -571,12 +574,11 @@ namespace DSFiles_Shared
             public string Seed { get; set; }
             public string RemoveToken { get; set; }
             public string WebLink { get; set; }
-            public string? Shortened { get; set; }
             public string UploadLog { get; set; }
 
             public string ToJson()
             {
-                return '{' + $"\"name\":\"{FileName}\",\"seed\":\"{Seed}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\",\"shortened\":\"{Shortened}\"" + '}';
+                return '{' + $"\"name\":\"{FileName}\",\"seed\":\"{Seed}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\"" + '}';
             }
 
             public Upload(string fileName, byte[] seed, byte[] key, byte[] secret, ref WebHookHelper webHookHelper)
@@ -605,9 +607,13 @@ namespace DSFiles_Shared
                 sb.AppendLine($"Seed: `{this.Seed}`");
                 sb.AppendLine($"RemoveToken: `{this.RemoveToken}`");
 
-                this.Shortened = SendJspaste(fileSeed);
+               /*this.Shortened = SendJspaste(fileSeed);
 
-                sb.AppendLine($"Shortened: `{this.Shortened}`");
+                if (!string.IsNullOrEmpty(Shortened))
+                {
+                    sb.AppendLine($"Shortened: `{this.Shortened}`");
+                }*/
+
                 sb.AppendLine($"`WebLink:` {this.WebLink}");
 
                 this.UploadLog = sb.ToString();
@@ -615,7 +621,7 @@ namespace DSFiles_Shared
                 webHookHelper.SendMessageInChunks(string.Join("\n", this.UploadLog.Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
             }
 
-            private static string SendJspaste(string data)
+            /*private static string SendJspaste(string data)
             {
                 try
                 {
@@ -632,8 +638,8 @@ namespace DSFiles_Shared
                     WriteException(ref ex);
                 }
 
-                return data;
-            }
+                return null;
+            }*/
         }
 
         public class GorillaTimestampCompressor
@@ -738,7 +744,7 @@ namespace DSFiles_Shared
                 {
                     if (uv > (1UL << 40))
                     {
-                        throw new InvalidOperationException("Dod exceded maximun of 40 bits :c");
+                        throw new InvalidOperationException("Dod encoder exceded maximun of 40 bits :c");
                     }
 
                     //Console.Write(" Bits:" + (2 + 40) + " Size:" + GetBits(v));

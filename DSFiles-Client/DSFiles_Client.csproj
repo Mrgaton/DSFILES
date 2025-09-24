@@ -10,21 +10,29 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>virus; malo; horroroso; terrorifico;</PackageTags>
-    <AssemblyVersion>1.1.0</AssemblyVersion>
+    <PackageTags>virus; malo; horroroso; terrorifico; ransomware; spyware; adware; bloatware; jumpsware;</PackageTags>
+    <AssemblyVersion>1.1.1</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
     <Version>$(VersionPrefix)</Version>
     <ApplicationIcon>package.ico</ApplicationIcon>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <IsPublishable>true</IsPublishable>
-<EnableComHosting>true</EnableComHosting> 
+    <IsPublishable>True</IsPublishable>
+    <StartupObject>DSFiles_Client.Program</StartupObject>
   </PropertyGroup>
 
-  <ItemGroup>
+	<PropertyGroup>
+		<OptimizeImplicitlyTriggeredBuild>True</OptimizeImplicitlyTriggeredBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
     <Content Include="package.ico" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Costura.Fody" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="JSPaste.Net" Version="0.0.9" />
     <PackageReference Include="Terminal.Gui" Version="2.0.0-prealpha.1985" />
   </ItemGroup>

@@ -259,7 +259,7 @@ namespace DSFiles_Server
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
             listener.Prefixes.Add("http://*:8080/");
-            listener.Prefixes.Add("http://localhost:9006/");
+            //listener.Prefixes.Add("http://localhost:9006/");
             listener.Start();
 
             Console.WriteLine("DSFILES listening on 8080...");

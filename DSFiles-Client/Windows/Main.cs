@@ -5,9 +5,10 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using Application = Terminal.Gui.App.Application;
-using  Terminal.Gui.Views;
+using Terminal.Gui.Views;
 using Terminal.Gui.App;
 using System.Threading.Tasks;
+using Clipboard = System.Windows.Forms.Clipboard;
 
 namespace DSFiles_Client.CGuis
 {
@@ -56,7 +57,9 @@ namespace DSFiles_Client.CGuis
 
                         if (!File.Exists(Program.WebHookFileName))
                         {
-                            if (!Clipboard.TryGetClipboardData(out string cp))
+                            string cp = Clipboard.GetText();
+
+                            if (string.IsNullOrEmpty(cp))
                             {
                                 MessageBox.Query("DSFiles Manager", "Error copying the clipboard content", "ok :c");
                                 return;
@@ -101,7 +104,7 @@ namespace DSFiles_Client.CGuis
                         {
                             stream = File.OpenRead(filePath);
 
-                            int reply = MessageBox.Query("DSFiles Manager", "Do you want to compress this file?", "no", "fastest", "optimal", "smallest");
+                            int reply = MessageBox.Query("DSFiles Manager", "Do you want to compress this file?", "None", "Fastest", "Optimal", "Smallest");
 
                             switch(reply)
                             {
@@ -159,7 +162,6 @@ namespace DSFiles_Client.CGuis
 
                         DiscordFilesSpliter.ConsoleProgress = progress;
 
-
                         Task.Factory.StartNew(async() =>
                         {
                             var result = await DiscordFilesSpliter.EncodeCore(webHookHelper, fileName, stream, compLevel);
@@ -180,7 +182,7 @@ namespace DSFiles_Client.CGuis
                             catch { }
 
                             ((IProgress<string>)progress).Report("WebLink: " + result.WebLink);
-                            ((IProgress<string>)progress).Report("FileSeed: " + result.Shortened);
+                            ((IProgress<string>)progress).Report("FileSeed: " + result.Seed);
                         });
                     });
                 })));

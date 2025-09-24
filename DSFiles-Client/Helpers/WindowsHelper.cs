@@ -1,5 +1,6 @@
 ﻿using DSFiles_Client.CGuis;
 using System;
+using System.Text.RegularExpressions;
 using Terminal.Gui.Drawing;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
@@ -29,7 +30,7 @@ namespace DSFiles_Client.Helpers
         {
             return new Progress<string>((s) =>
             {
-                foreach (var line in s.Split('\n'))
+                foreach (var line in AnsiStrip.Strip(s).Split('\n'))
                 {
                     var content = line.Replace("\r", "");
 
