@@ -170,9 +170,10 @@ namespace DSFiles_Shared
                             _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, BlockSize); 
 
                             Span<byte> dstSlice = buffer.Slice(processedBytes, 2 * BlockSize);
-                            ref byte dstRef = ref MemoryMarshal.GetReference(dstSlice);
 
-                            ref byte ksRef = ref MemoryMarshal.GetReference(_keystream32);
+                            ref byte dstRef = ref MemoryMarshal.GetReference<byte>(dstSlice);
+
+                            ref byte ksRef = ref MemoryMarshal.GetReference<byte>(_keystream32);
 
                             var ksVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref ksRef);
                             var dataVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref dstRef); 
