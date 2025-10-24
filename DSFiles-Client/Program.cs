@@ -1307,6 +1307,15 @@ namespace DSFiles_Client
                 if ((protocolKey == null || (value == null || !value.Contains(executablePath))) && !admin)
                 {
                     var exception = (Exception)(new SecurityException("Can't modify url protocol please run as administrator"));
+
+                    Process.Start(new ProcessStartInfo()
+                    {
+                        FileName = executablePath,
+                        Arguments = string.Join(" ", args),
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    });
+
                     WriteException(ref exception);
 
 #if !DEBUG

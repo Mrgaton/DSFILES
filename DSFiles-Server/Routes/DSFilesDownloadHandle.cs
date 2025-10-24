@@ -17,6 +17,7 @@ namespace DSFiles_Server.Routes
         private static Dictionary<string, string> contentTypes = new Dictionary<string, string>()
         {
             { "mkv", "video/matroska" },
+            { "wav", "audio/x-wav" },
             { "mk3d", "video/matroska-3d" },
             { "mka", "audio/matroska" },
 
@@ -54,7 +55,7 @@ namespace DSFiles_Server.Routes
                     provider.Mappings[key] = type.Value;
                 }
 
-                //Console.WriteLine(type.Key + " | " + type.Value);
+                Console.WriteLine("Replacing content type: " + type.Key + " | " + type.Value);
             }
 
             return provider;
@@ -146,7 +147,7 @@ namespace DSFiles_Server.Routes
 
                 //res.Send('[' + string.Join(", ",attachments)+ ']');
 
-                if (ids.Length > 2)
+                if (ids.Length > 5)
                 {
                     res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
 
