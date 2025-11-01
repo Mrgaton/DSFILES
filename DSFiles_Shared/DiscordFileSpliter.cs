@@ -139,11 +139,11 @@ namespace DSFiles_Shared
         private static int MaxCompressionFileSize = (int.MaxValue / 8) * 7;
         public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, level);
 
-        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression)
+        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, byte[] encodeKey = null, StreamWriter tempIdsWriter = null)
         {
             bool compress = level != CompressionLevel.NoCompression;
 
-            using (StreamWriter tempIdsWriter = UnsendedIdsWriter)
+            using (tempIdsWriter = tempIdsWriter ?? UnsendedIdsWriter)
             using (MemoryStream seedData = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(seedData))
             {
@@ -207,7 +207,7 @@ namespace DSFiles_Shared
 
                 sw.Start();
 
-                byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(8,12));
+                byte[] key = encodeKey ?? RandomNumberGenerator.GetBytes(new Random().Next(10,16));
 
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
@@ -372,9 +372,15 @@ namespace DSFiles_Shared
 
                     for (int f = 0; f < messagesToSend; f++)
                     {
-                        int bytesReaded = await stream.ReadAsync(buffer, 0, buffer.Length);
-                        ts.Encode(buffer, bytesReaded);
-                        await postChunk(buffer, bytesReaded, f);
+                        int bytesReadedTotal = 0, bytesReaded = 0;
+
+                        while((bytesReaded = await stream.ReadAsync(buffer, bytesReadedTotal, buffer.Length - bytesReadedTotal)) > 0)
+                        {
+                            bytesReadedTotal += bytesReaded;
+                        }
+
+                        ts.Encode(buffer, bytesReadedTotal);
+                        await postChunk(buffer, bytesReadedTotal, f);
                         sw.Restart();
                     }
                 }

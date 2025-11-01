@@ -1,6 +1,8 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Shared;
+using Microsoft.AspNetCore.Routing.Template;
 using System.Net;
+using System.Security.Cryptography;
 
 namespace DSFiles_Server.Routes
 {
@@ -19,16 +21,31 @@ namespace DSFiles_Server.Routes
 
             using (var httpStream = new HttpStream(req))
             {
-                if (httpStream.Length > 25 * 1000 * 1000)
+                if (httpStream.Length > 100 * 1000 * 1000)
                 {
                     res.Send("File is too big");
 
                     return;
                 }
 
-                var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook), fileName, httpStream);
+                using (MemoryStream ms = new MemoryStream())
+                using (StreamWriter tempIds = new StreamWriter(ms))
+                {
+                    try
+                    {
+                        byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
 
-                res.Send(result.ToJson());
+                        var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook), fileName, httpStream, System.IO.Compression.CompressionLevel.NoCompression, key, tempIds);
+
+                        res.Send(result.ToJson());
+                    }
+                    catch (Exception ex) 
+                    {
+                        Console.Error.WriteLine(ex.ToString());
+                        
+                        await new WebHookHelper(Program.client, webHook).RemoveMessages((await new StreamReader(ms).ReadToEndAsync()).Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray());
+                    }
+                }
             }
         }
 
@@ -79,6 +96,7 @@ namespace DSFiles_Server.Routes
                 {
                     _innerStream.Dispose();
                 }
+
                 base.Dispose(disposing);
             }
         }

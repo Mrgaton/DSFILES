@@ -17,6 +17,7 @@ namespace DSFiles_Server
             MaxConnectionsPerServer = short.MaxValue,
         })
         {
+            Timeout = TimeSpan.FromSeconds(12),
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
@@ -258,7 +259,7 @@ namespace DSFiles_Server
 
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
-            listener.Prefixes.Add("http://*:8080/");
+            listener.Prefixes.Add("http://*:8081/");
             //listener.Prefixes.Add("http://localhost:9006/");
             listener.Start();
 
