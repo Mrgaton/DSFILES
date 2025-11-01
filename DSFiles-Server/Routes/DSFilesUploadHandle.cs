@@ -35,15 +35,27 @@ namespace DSFiles_Server.Routes
                     {
                         byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
 
-                        var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook), fileName, httpStream, System.IO.Compression.CompressionLevel.NoCompression, key, tempIds);
+                        var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook),
+                            name: fileName,
+                            stream: httpStream,
+                            level: System.IO.Compression.CompressionLevel.Optimal,
+                            onTheFlyCompression: true,
+                            encodeKey: key, 
+                            tempIdsWriter: tempIds, 
+                            disposeIdsWritter: false);
 
                         res.Send(result.ToJson());
                     }
                     catch (Exception ex) 
                     {
                         Console.Error.WriteLine(ex.ToString());
-                        
-                        await new WebHookHelper(Program.client, webHook).RemoveMessages((await new StreamReader(ms).ReadToEndAsync()).Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray());
+
+                        tempIds.Flush();
+                        ms.Position = 0;
+
+                        var ids = (await new StreamReader(ms).ReadToEndAsync()).Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray();
+
+                        await new WebHookHelper(Program.client, webHook).RemoveMessages(ids);
                     }
                 }
             }

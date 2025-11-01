@@ -1,11 +1,8 @@
-﻿using JSPasteNet;
-using System;
-using System.Buffers;
+﻿    using System.Buffers;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.IO.Pipelines;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -139,15 +136,16 @@ namespace DSFiles_Shared
         private static int MaxCompressionFileSize = (int.MaxValue / 8) * 7;
         public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, level);
 
-        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, byte[] encodeKey = null, StreamWriter tempIdsWriter = null)
+        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, bool onTheFlyCompression = false, byte[] encodeKey = null, StreamWriter tempIdsWriter = null, bool disposeIdsWritter = true)
         {
             bool compress = level != CompressionLevel.NoCompression;
 
-            using (tempIdsWriter = tempIdsWriter ?? UnsendedIdsWriter)
+            tempIdsWriter = tempIdsWriter ?? UnsendedIdsWriter;
+
             using (MemoryStream seedData = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(seedData))
             {
-                if (compress)
+                if (compress && !onTheFlyCompression)
                 {
                     if (stream.Length >= MaxCompressionFileSize)
                         ErrorProgress.Report("Stream length is too big and can't be compressed to memory");
@@ -186,12 +184,6 @@ namespace DSFiles_Shared
                     stream = tempNewStream;
                     stream.Position = 0;
                 }
-
-                ByteConfig config = new ByteConfig() { Compression = compress, VersionNumber = 2 };
-
-                bw.Write(config.ToByte());
-                bw.Write(stream.Length);
-                bw.Write(webHook.channelId);
 
                 //await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
 
@@ -255,142 +247,208 @@ namespace DSFiles_Shared
                         if (sw.ElapsedMilliseconds < 2000) Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
 
-                    int i = 0;
 
-                    /*if (compress)
+
+                    if (compress && onTheFlyCompression)
                     {
-                        var pendingBuffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE + IOBuffer);
-                        int pendingCount = 0;
+                        int compLevelNum = level switch
+                        {
+                            CompressionLevel.Fastest => 2,
+                            CompressionLevel.Optimal => 6,
+                            CompressionLevel.SmallestSize => 11,
+                            _ => 6
+                        };
 
-                        byte[] inputBuffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE);
+                        // Rent buffers
+                        byte[] inputBuffer = ArrayPool<byte>.Shared.Rent(IOBuffer);
                         byte[] outputBuffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE);
+                        // pendingBuffer must be big enough to append one output block safely:
+                        byte[] pendingBuffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE + outputBuffer.Length);
+
+                        int pendingCount = 0;
+                        int chunkIndex = 0;
 
                         try
                         {
-                            using (var encoder = new BrotliEncoder(compressionLevel, window: 24))
+                            using var encoder = new BrotliEncoder(compLevelNum, window: 24);
+
+                            bool eof = false;
+                            // Read loop
+                            while (!eof)
                             {
-                                bool eof = false;
-                                while (!eof)
+                                // Read into the rented inputBuffer
+                                int read = await stream.ReadAsync(inputBuffer, 0, IOBuffer).ConfigureAwait(false);
+                                if (read == 0)
                                 {
-                                    int read = await stream.ReadAsync(inputBuffer, 0, IOBuffer);
-                                    if (read == 0) eof = true;
+                                    eof = true; // mark EOF, still let encoder drain
+                                }
 
-                                    var inputSpan = new ReadOnlySpan<byte>(inputBuffer, 0, read);
-                                    while (true)
+                                // Use ReadOnlyMemory so it can be kept across awaits
+                                ReadOnlyMemory<byte> inputMem = inputBuffer.AsMemory(0, read);
+
+                                // Inner compress loop: keep compressing until encoder needs more input or finishes draining
+                                while (true)
+                                {
+                                    bool isFinal = eof && inputMem.IsEmpty;
+
+                                    // Call Compress using the ephemeral .Span only for the call
+                                    var status = encoder.Compress(inputMem.Span, outputBuffer, out int consumed, out int produced, isFinal);
+
+                                    // Append produced bytes safely into pendingBuffer (loop if produced > available space)
+                                    int producedOffset = 0;
+                                    while (producedOffset < produced)
                                     {
-                                        bool isFinal = eof && inputSpan.IsEmpty;
-                                        var status = encoder.Compress(inputSpan, outputBuffer, out int consumed, out int produced, isFinal);
+                                        int space = pendingBuffer.Length - pendingCount;
+                                        if (space == 0)
+                                        {
+                                            // Emit a full chunk to make room
+                                            ts.Encode(pendingBuffer, CHUNK_SIZE);
+                                            await postChunk(pendingBuffer, CHUNK_SIZE, chunkIndex++).ConfigureAwait(false);
 
-                                        new ReadOnlySpan<byte>(outputBuffer, 0, produced)
-                                            .CopyTo(new Span<byte>(pendingBuffer, pendingCount, produced));
+                                            // Move tail down (Array.Copy handles overlapping ranges)
+                                            int tail = pendingCount - CHUNK_SIZE;
+                                            if (tail > 0)
+                                                Array.Copy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
+                                            pendingCount = Math.Max(0, tail);
+                                            continue;
+                                        }
 
-                                        pendingCount += produced;
+                                        int toCopy = Math.Min(space, produced - producedOffset);
+                                        outputBuffer.AsSpan(producedOffset, toCopy)
+                                                    .CopyTo(pendingBuffer.AsSpan(pendingCount, toCopy));
+                                        producedOffset += toCopy;
+                                        pendingCount += toCopy;
 
-                                        if (pendingCount >= CHUNK_SIZE)
+                                        // Emit any full chunks
+                                        while (pendingCount >= CHUNK_SIZE)
                                         {
                                             ts.Encode(pendingBuffer, CHUNK_SIZE);
-                                            postChunk(pendingBuffer, CHUNK_SIZE, i++);
-                                            sw.Restart();
+                                            await postChunk(pendingBuffer, CHUNK_SIZE, chunkIndex++).ConfigureAwait(false);
 
                                             int tail = pendingCount - CHUNK_SIZE;
                                             if (tail > 0)
-                                                Buffer.BlockCopy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
-                                            pendingCount = tail;
+                                                Array.Copy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
+                                            pendingCount = Math.Max(0, tail);
                                         }
+                                    } // end append produced
 
-                                        if (status == OperationStatus.Done)
-                                            break;
+                                    // Advance input by consumed bytes (slice the ReadOnlyMemory)
+                                    if (consumed > 0)
+                                        inputMem = inputMem.Slice(consumed);
 
-                                        else if (status == OperationStatus.NeedMoreData)
-                                        {
-                                            inputSpan = inputSpan.Slice(consumed);
+                                    if (status == OperationStatus.Done)
+                                        break;
 
-                                            if (!inputSpan.IsEmpty)
-                                            {
-                                                continue;
-                                            }
-                                            else
-                                            {
-                                                break;
-                                            }
-                                        }
-                                        else if (status == OperationStatus.DestinationTooSmall)
-                                        {
-                                            inputSpan = inputSpan.Slice(consumed);
-                                            continue;
-                                        }
-                                        throw new InvalidOperationException($"Brotli error: {status}");
+                                    if (status == OperationStatus.NeedMoreData)
+                                    {
+                                        // if there's still input bytes to compress, continue; otherwise go read more
+                                        if (!inputMem.IsEmpty) continue;
+                                        break;
                                     }
-                                }
 
-                                while (true)
+                                    if (status == OperationStatus.DestinationTooSmall)
+                                    {
+                                        // encoder has more output than outputBuffer; loop to drain it
+                                        continue;
+                                    }
+
+                                    throw new InvalidOperationException($"Brotli error: {status}");
+                                } // inner compress loop
+                            } // outer read loop
+
+                            // Drain encoder (Flush)
+                            while (true)
+                            {
+
+                                var status = encoder.Flush(outputBuffer, out int produced);
+
+                                int producedOffset = 0;
+                                while (producedOffset < produced)
                                 {
-                                    var status = encoder.Flush(outputBuffer, out int produced);
-                                    new ReadOnlySpan<byte>(outputBuffer, 0, produced)
-                                        .CopyTo(new Span<byte>(pendingBuffer, pendingCount, produced));
-                                    pendingCount += produced;
-
-                                    if (pendingCount >= CHUNK_SIZE)
+                                    int space = pendingBuffer.Length - pendingCount;
+                                    if (space == 0)
                                     {
                                         ts.Encode(pendingBuffer, CHUNK_SIZE);
-                                        postChunk(pendingBuffer, CHUNK_SIZE, i++);
-                                        sw.Restart();
+                                        await postChunk(pendingBuffer, CHUNK_SIZE, chunkIndex++).ConfigureAwait(false);
 
                                         int tail = pendingCount - CHUNK_SIZE;
                                         if (tail > 0)
-                                            Buffer.BlockCopy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
-                                        pendingCount = tail;
+                                            Array.Copy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
+                                        pendingCount = Math.Max(0, tail);
+                                        continue;
                                     }
 
-                                    if (status == OperationStatus.Done) break;
-                                    if (status != OperationStatus.DestinationTooSmall)
-                                        throw new InvalidOperationException($"Brotli flush failed: {status}");
+                                    int toCopy = Math.Min(space, produced - producedOffset);
+                                    outputBuffer.AsSpan(producedOffset, toCopy)
+                                                .CopyTo(pendingBuffer.AsSpan(pendingCount, toCopy));
+                                    producedOffset += toCopy;
+                                    pendingCount += toCopy;
+
+                                    while (pendingCount >= CHUNK_SIZE)
+                                    {
+                                        ts.Encode(pendingBuffer, CHUNK_SIZE);
+                                        await postChunk(pendingBuffer, CHUNK_SIZE, chunkIndex++).ConfigureAwait(false);
+
+                                        int tail = pendingCount - CHUNK_SIZE;
+                                        if (tail > 0)
+                                            Array.Copy(pendingBuffer, CHUNK_SIZE, pendingBuffer, 0, tail);
+                                        pendingCount = Math.Max(0, tail);
+                                    }
                                 }
 
-                                // write any remaining bytes (< chunkSize)
-                                if (pendingCount > 0)
-                                {
-                                    ts.Encode(pendingBuffer, pendingCount);
+                                if (status == OperationStatus.Done) break;
+                                if (status != OperationStatus.DestinationTooSmall)
+                                    throw new InvalidOperationException($"Brotli flush failed: {status}");
+                            }
 
-                                    postChunk(pendingBuffer, pendingCount, i++); // how can we know the exact amount remaning?
-                                }
+                            // Send any remaining bytes (< CHUNK_SIZE)
+                            if (pendingCount > 0)
+                            {
+                                ts.Encode(pendingBuffer, pendingCount);
+                                await postChunk(pendingBuffer, pendingCount, chunkIndex++).ConfigureAwait(false);
+                                pendingCount = 0;
                             }
                         }
                         finally
                         {
-                            ArrayPool<byte>.Shared.Return(pendingBuffer);
-                            ArrayPool<byte>.Shared.Return(inputBuffer);
-                            ArrayPool<byte>.Shared.Return(outputBuffer);
+                            // Return buffers (clear if requested)
+                            ArrayPool<byte>.Shared.Return(inputBuffer, clearArray: true);
+                            ArrayPool<byte>.Shared.Return(outputBuffer, clearArray: true);
+                            ArrayPool<byte>.Shared.Return(pendingBuffer, clearArray: true);
                         }
                     }
                     else
                     {
-                        
-                    }*/
+                        byte[] buffer = new byte[CHUNK_SIZE];
 
-                    byte[] buffer = new byte[CHUNK_SIZE];
-
-                    for (int f = 0; f < messagesToSend; f++)
-                    {
-                        int bytesReadedTotal = 0, bytesReaded = 0;
-
-                        while((bytesReaded = await stream.ReadAsync(buffer, bytesReadedTotal, buffer.Length - bytesReadedTotal)) > 0)
+                        for (int f = 0; f < messagesToSend; f++)
                         {
-                            bytesReadedTotal += bytesReaded;
-                        }
+                            int bytesReadedTotal = 0, bytesReaded = 0;
 
-                        ts.Encode(buffer, bytesReadedTotal);
-                        await postChunk(buffer, bytesReadedTotal, f);
-                        sw.Restart();
+                            while ((bytesReaded = await stream.ReadAsync(buffer, bytesReadedTotal, buffer.Length - bytesReadedTotal)) > 0)
+                            {
+                                bytesReadedTotal += bytesReaded;
+                            }
+
+                            ts.Encode(buffer, bytesReadedTotal);
+                            await postChunk(buffer, bytesReadedTotal, f);
+                            sw.Restart();
+                        }
                     }
                 }
 
                 sw.Stop();
 
-                tempIdsWriter.BaseStream.SetLength(0);
+                if (disposeIdsWritter)
+                    tempIdsWriter.BaseStream.SetLength(0);
 
                 ConsoleProgress.Report("");
 
+                ByteConfig config = new ByteConfig() { Compression = compress, VersionNumber = 2 };
+
+                bw.Write(config.ToByte());
+                bw.Write(totalWrited);
+                bw.Write(webHook.channelId);
                 bw.Write(new GorillaTimestampCompressor().Compress(attachmentsIdsList.ToArray()));
 
                 try

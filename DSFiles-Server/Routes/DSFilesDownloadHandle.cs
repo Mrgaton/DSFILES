@@ -189,7 +189,7 @@ namespace DSFiles_Server.Routes
                 {
                     if (config.Compression)
                     {
-                        res.SendStatus(500, "The data content is compressed and cant send specific range");
+                        res.SendStatus(416, "The data content is compressed and cant send specific range");
                         return;
                     }
 
