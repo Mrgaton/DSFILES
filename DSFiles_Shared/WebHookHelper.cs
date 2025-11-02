@@ -145,9 +145,9 @@ namespace DSFiles_Shared
         public struct FileData
         {
             public string FileName { get; set; }
-            public byte[] Data { get; set; }
+            public HttpContent Data { get; set; }
 
-            public FileData(string fileName, byte[] data)
+            public FileData(string fileName, HttpContent data)
             {
                 FileName = fileName;
                 Data = data;
@@ -162,7 +162,7 @@ namespace DSFiles_Shared
 
             foreach (var file in files)
             {
-                form.Add(new ByteArrayContent(file.Data, 0, file.Data.Length), index.ToString(), file.FileName);
+                form.Add(file.Data, index.ToString(), file.FileName);
 
                 index++;
             }

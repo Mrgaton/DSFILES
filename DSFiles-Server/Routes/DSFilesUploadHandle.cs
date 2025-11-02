@@ -1,6 +1,7 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Shared;
 using Microsoft.AspNetCore.Routing.Template;
+using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 
@@ -34,15 +35,17 @@ namespace DSFiles_Server.Routes
                     try
                     {
                         byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
+                        CompressionLevel compLevel = DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.Optimal : CompressionLevel.NoCompression; 
 
                         var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook),
                             name: fileName,
                             stream: httpStream,
-                            level: System.IO.Compression.CompressionLevel.Optimal,
+                            level: compLevel,
                             onTheFlyCompression: true,
                             encodeKey: key, 
                             tempIdsWriter: tempIds, 
-                            disposeIdsWritter: false);
+                            disposeIdsWritter: false
+                        );
 
                         res.Send(result.ToJson());
                     }

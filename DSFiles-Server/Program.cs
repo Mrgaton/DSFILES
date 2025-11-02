@@ -9,6 +9,8 @@ namespace DSFiles_Server
 {
     internal static class Program
     {
+        private const int PortNumber = 8081;
+
         public static HttpClient client = new HttpClient(new HttpClientHandler()
         {
             CookieContainer = new CookieContainer(80),
@@ -259,11 +261,11 @@ namespace DSFiles_Server
 
             HttpListener listener = new HttpListener() { IgnoreWriteExceptions = false };
 
-            listener.Prefixes.Add("http://*:8081/");
+            listener.Prefixes.Add($"http://*:{PortNumber}/");
             //listener.Prefixes.Add("http://localhost:9006/");
             listener.Start();
 
-            Console.WriteLine("DSFILES awesome server listening on 8080...");
+            Console.WriteLine($"DSFILES awesome server listening on {PortNumber}...");
 
             Task.Factory.StartNew(() =>
             {
@@ -321,6 +323,24 @@ namespace DSFiles_Server
                         {
                             await DSFilesUploadHandle.HandleFile(req, res);
                         }
+                        else if (method == HttpMethod.Delete)
+                        {
+                            await DSFilesRemoveHandle.HandleFile(req, res);
+                        }
+                        break;
+
+                    case "cuh":
+                        if (method == HttpMethod.Post)
+                        {
+                            await DSFilesChunkedUploadHandle.HandleHandshake(req, res);
+                        }
+                        break;
+
+                    case "cuc":
+                        if (method == HttpMethod.Post)
+                        {
+                            await DSFilesChunkedUploadHandle.HandleChunk(req, res);
+                        }
                         break;
 
                     case "rd" or "r":
@@ -349,9 +369,9 @@ namespace DSFiles_Server
                         ConsoleAnimation.HandleAnimation(req, res);
                         break;
 
-                    case "cert" or "certs":
+                    /*case "cert" or "certs":
                         CertificatesHandler.HandleCertificate(req, res);
-                        break;
+                        break;*/
 
                     case "favicon.ico":
                         res.SendStatus(404);

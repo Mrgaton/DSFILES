@@ -61,7 +61,7 @@ namespace DSFiles_Shared
         }
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
        
-        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma" ];
+        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".wav" ];
 
         public static bool IsCompresable(string? ext, long filesize)
         {
@@ -244,7 +244,8 @@ namespace DSFiles_Shared
 
                         ConsoleProgress.Report(AnsiColors.Gold + "Uploaded " + AnsiColors.Cyan + messagesSended + (!compress ? AnsiColors.Silver+ "/"+ AnsiColors.BrightCyan + messagesToSend : null) + AnsiColors.Gold+ " total writed is " + AnsiColors.Silver + ByteSizeToString(totalWrited) + AnsiColors.Gold + " took " +AnsiColors.BrightBlue + sw.ElapsedMilliseconds + AnsiColors.Gold+ "ms eta " + AnsiColors.LightBlue + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + AnsiColors.Gold + " end "+ AnsiColors.LightGray  + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
-                        if (sw.ElapsedMilliseconds < 2000) Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
+                        if (sw.ElapsedMilliseconds < 2000) 
+                            Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
 
 
@@ -273,11 +274,11 @@ namespace DSFiles_Shared
                             using var encoder = new BrotliEncoder(compLevelNum, window: 24);
 
                             bool eof = false;
-                            // Read loop
+
                             while (!eof)
                             {
-                                // Read into the rented inputBuffer
-                                int read = await stream.ReadAsync(inputBuffer, 0, IOBuffer).ConfigureAwait(false);
+                                int read = await stream.ReadAsync(inputBuffer, 0, IOBuffer);
+
                                 if (read == 0)
                                 {
                                     eof = true; // mark EOF, still let encoder drain
@@ -292,13 +293,15 @@ namespace DSFiles_Shared
                                     bool isFinal = eof && inputMem.IsEmpty;
 
                                     // Call Compress using the ephemeral .Span only for the call
-                                    var status = encoder.Compress(inputMem.Span, outputBuffer, out int consumed, out int produced, isFinal);
+                                    var status = encoder.Compress(inputMem.Span, outputBuffer, out int consumed, out int written, isFinal);
 
                                     // Append produced bytes safely into pendingBuffer (loop if produced > available space)
                                     int producedOffset = 0;
-                                    while (producedOffset < produced)
+
+                                    while (producedOffset < written)
                                     {
                                         int space = pendingBuffer.Length - pendingCount;
+                                        
                                         if (space == 0)
                                         {
                                             // Emit a full chunk to make room
@@ -313,7 +316,7 @@ namespace DSFiles_Shared
                                             continue;
                                         }
 
-                                        int toCopy = Math.Min(space, produced - producedOffset);
+                                        int toCopy = Math.Min(space, written - producedOffset);
                                         outputBuffer.AsSpan(producedOffset, toCopy)
                                                     .CopyTo(pendingBuffer.AsSpan(pendingCount, toCopy));
                                         producedOffset += toCopy;
