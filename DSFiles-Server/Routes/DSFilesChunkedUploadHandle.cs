@@ -19,25 +19,53 @@ namespace DSFiles_Server.Routes
     {
         private static ConcurrentDictionary<Guid, UploadSession> Sessions = new();
 
+        static DSFilesChunkedUploadHandle()
+        {
+            Task.Factory.StartNew(() =>
+            {
+                while(true)
+                {
+                    try
+                    {
+                        foreach(var session in Sessions.ToArray())
+                        {
+                            if ((DateTime.UtcNow - session.Value.LastUploaded).TotalSeconds > 20)
+                            {
+                                Task.Factory.StartNew(() => session.Value.WebHook.RemoveMessages(session.Value.MessagesIDs));
+
+                                Sessions.TryRemove(session.Key, out _);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine(ex.ToString());
+                    }
+
+                    Thread.Sleep(20000);
+                }
+            });
+        }
         public class UploadSession
         {
-            public WebHookHelper WebHook { get; set; }
-            public string FileName { get; set; }
+            public required WebHookHelper WebHook { get; set; }
+            public required string FileName { get; set; }
             public long FileSize { get; set; }
             public long TotalWritted { get; set; }
             public DateTime LastUploaded { get; set; }
             public int TotalChunks { get; set; }
             public int ChunkNum { get; set; }
-            public AesCTRStream AesStream { get; set; }
-            public ulong[] AttachementsIDs { get; set; }
-            public ulong[] MessagesIDs { get; set; }
+            public required byte[] Key { get; set; }
+            public required AesCTRStream AesStream { get; set; }
+            public required ulong[] AttachementsIDs { get; set; }
+            public required ulong[] MessagesIDs { get; set; }
         }
 
         public static async Task HandleHandshake(HttpListenerRequest req, HttpListenerResponse res)
         {
             string? turnstileToken = req.Headers.Get("turnstile");
 
-            string? webHook = req.Headers.Get("webhook");
+            string? webHook = req.Headers.Get("webhook") ?? Environment.GetEnvironmentVariable("WEBHOOK");
             string? fileName = req.Headers.Get("filename");
             string? fileSizeStr = req.Headers.Get("filesize");
 
@@ -59,6 +87,7 @@ namespace DSFiles_Server.Routes
                 WebHook = new WebHookHelper(Program.client, webHook),
                 FileName = fileName,
                 FileSize = fileSize,
+                Key = key,
                 AesStream = aesctrs,
                 LastUploaded = DateTime.UtcNow,
 
@@ -72,7 +101,8 @@ namespace DSFiles_Server.Routes
 
             res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
             res.AddHeader("Session-ID", sessionId.ToString());
-            res.SendStatus(200);
+            res.AddHeader("ChunkSize", DiscordFilesSpliter.CHUNK_SIZE.ToString());
+            res.SendStatus(200,"Happy happy happy 😊");
         }
 
         public static async Task HandleChunk(HttpListenerRequest req, HttpListenerResponse res)
@@ -107,15 +137,22 @@ namespace DSFiles_Server.Routes
             {
                 if (session.TotalChunks != session.ChunkNum + 1 && httpStream.Length != DiscordFilesSpliter.CHUNK_SIZE)
                 {
-                    res.Send("File is not exactly " + DiscordFilesSpliter.CHUNK_SIZE + " bytes");
+                    res.SendStatus(422,"File is not exactly " + DiscordFilesSpliter.CHUNK_SIZE + " bytes");
                     return;
                 }
 
                 string attachementName = DiscordFilesSpliter.EncodeAttachementName(session.WebHook.channelId, chunkIndex, session.TotalChunks);
 
                 byte[] content = new byte[httpStream.Length];
-                await httpStream.ReadAsync(content, 0, content.Length);
-                session.AesStream.Position = (chunkIndex + 1) * DiscordFilesSpliter.CHUNK_SIZE;
+                int readed = 0, totalReaded = 0;
+           
+                while ((readed = await httpStream.ReadAsync(content, totalReaded, content.Length - totalReaded)) > 0)
+                {
+                    totalReaded += readed;
+                }
+
+                int aesBasePosition = (chunkIndex) * DiscordFilesSpliter.CHUNK_SIZE;
+                session.AesStream.Position = aesBasePosition;
                 session.AesStream.Encode(content, content.Length);
 
                 using (var sc = new ByteArrayContent(content))
@@ -131,7 +168,6 @@ namespace DSFiles_Server.Routes
 
                     if (attachementId <= 0 || messageId <= 0) 
                         throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
-                    
                     
                     session.MessagesIDs[chunkIndex] = messageId;
                     session.AttachementsIDs[chunkIndex] = attachementId;
@@ -154,12 +190,13 @@ namespace DSFiles_Server.Routes
                             var uploaded = new Upload(
                                 session.FileName,
                                 seedData.ToArray().Deflate(),
-                                session.AesStream.GetSubKey(),
+                                session.Key,
                                 new GorillaTimestampCompressor().Compress(session.MessagesIDs),
                                 ref webHook
                             );
 
-                            res.SendStatus(200, uploaded.ToJson());
+                            res.SendStatus(200, uploaded.Json);
+                            Sessions.TryRemove(sessionGuid, out _);
                             return;
                         }
                     }

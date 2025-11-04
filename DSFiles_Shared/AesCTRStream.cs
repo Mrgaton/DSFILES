@@ -16,7 +16,6 @@ namespace DSFiles_Shared
         private const int BlockSize = 16;
         private const int CounterSize = sizeof(ulong);
 
-        private readonly byte[] SubKey;
         private readonly byte[] Key;
 
         private readonly byte[] Nonce;
@@ -28,7 +27,6 @@ namespace DSFiles_Shared
 
         private readonly Stream _baseStream;
 
-        public byte[] GetSubKey() => SubKey;
 
         public AesCTRStream(Stream? baseStream, byte[]? subKey = null)
         {
@@ -42,7 +40,6 @@ namespace DSFiles_Shared
                 //int hashSize = 256;
                 //var derivedKey = HKDF.Expand(HashAlgorithmName.SHA256, SHA512.HashData(subKey), (hashSize / 8) * 255);
 
-                SubKey = subKey;
                 Key = new HMACSHA256(SHA512.HashData(subKey)).ComputeHash(TransformationKey);
 
                 Nonce = (new HMACMD5(TransformationKey).ComputeHash(Key));

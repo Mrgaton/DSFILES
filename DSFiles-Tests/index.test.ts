@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 describe("DS Upload handshake", async () => {
-	const file = Bun.file("怪獣になりたい初音ミクプロジェクトセカイ.mp4");
+	const file = Bun.file(
+		"C:\\Users\\Mrgaton\\Downloads\\怪獣になりたい _ Sakuzyo feat. 初音ミク 【プロジェクトセカイChampionship 2025】【MV】_3229.mp4",
+	);
+	//const file = Bun.file("index.test.ts");
 	let response = await fetch("http://127.0.0.1:8081/cuh", {
 		method: "POST",
 		headers: {
@@ -20,19 +23,27 @@ describe("DS Upload handshake", async () => {
 	expect(session !== "").toBe(true);
 
 	test("DS Upload chunk", async () => {
-		response = await fetch("http://127.0.0.1:8081/cuc", {
-			method: "POST",
-			headers: {
-				"Session-ID": session,
-				"Content-Length": file.size,
-				chunk: "1",
-			},
+		const CHUNK_SIZE = 9999744; // 10 MB
+		const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-			body: await file.arrayBuffer(),
-		});
+		for (let i = 0; i < totalChunks; i++) {
+			const start = i * CHUNK_SIZE;
+			const end = Math.min(file.size, start + CHUNK_SIZE);
+			const chunk = file.slice(start, end);
 
-		console.debug(response.headers);
-		console.debug(await response.text());
+			response = await fetch("http://127.0.0.1:8081/cuc", {
+				method: "POST",
+				headers: {
+					"Session-ID": session,
+					chunk: String(i + 1),
+				},
+				body: chunk,
+			});
+
+			console.debug(response.headers);
+			console.debug(await response.text());
+		}
+
 		expect(response.status).toBe(200);
 	});
 });

@@ -9,7 +9,11 @@ namespace DSFiles_Server
 {
     internal static class Program
     {
+#if DEBUG
         private const int PortNumber = 8081;
+#else
+        private const int PortNumber = 8080;
+#endif
 
         public static HttpClient client = new HttpClient(new HttpClientHandler()
         {
@@ -396,7 +400,7 @@ namespace DSFiles_Server
         {
             var lastColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(string.Join('\n', messages) + '\n' + ex.ToString() + '\n');
+            Console.Error.WriteLine(string.Join('\n', messages) + '\n' + ex.ToString() + '\n');
             Console.ForegroundColor = lastColor;
             Thread.Sleep(2000);
         }

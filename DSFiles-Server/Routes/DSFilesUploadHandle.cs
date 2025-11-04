@@ -11,7 +11,7 @@ namespace DSFiles_Server.Routes
     {
         public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
         {
-            string? webHook = req.Headers.Get("webhook");
+            string? webHook = req.Headers.Get("webhook") ?? Environment.GetEnvironmentVariable("WEBHOOK");
             string? fileName = req.Headers.Get("filename");
 
             if (webHook == null || fileName == null || string.IsNullOrWhiteSpace(webHook))
@@ -34,8 +34,11 @@ namespace DSFiles_Server.Routes
                 {
                     try
                     {
+                        res.OutputStream.Write([]);
+                        res.OutputStream.Flush();
+
                         byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
-                        CompressionLevel compLevel = DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.Optimal : CompressionLevel.NoCompression; 
+                        CompressionLevel compLevel = DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.SmallestSize : CompressionLevel.NoCompression; 
 
                         var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook),
                             name: fileName,
@@ -47,7 +50,7 @@ namespace DSFiles_Server.Routes
                             disposeIdsWritter: false
                         );
 
-                        res.Send(result.ToJson());
+                        res.Send(result.Json);
                     }
                     catch (Exception ex) 
                     {

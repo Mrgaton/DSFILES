@@ -1665,7 +1665,7 @@ namespace DSFiles_Client
 
             if (!string.IsNullOrEmpty(API_TOKEN))
             {
-                DSServerHelper.AddFile(result.ToJson()).GetAwaiter().GetResult();
+                DSServerHelper.AddFile(result.Json).GetAwaiter().GetResult();
             }
 
             UploadedFilesWriter.WriteLine(result.UploadLog);

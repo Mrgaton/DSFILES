@@ -320,7 +320,7 @@ namespace DSFiles_Server.Routes
                     }
                     catch (HttpRequestException ex)
                     {
-                        Console.WriteLine(ex.Message);
+                        Console.Error.WriteLine(ex.Message);
 
                         if (ex.StatusCode == HttpStatusCode.NotFound)
                         {
@@ -339,7 +339,7 @@ namespace DSFiles_Server.Routes
                     }
                     catch (HttpListenerException ex)
                     {
-                        Console.WriteLine(ex.Message);
+                        Console.Error.WriteLine(ex.Message);
                         return;
                     }
                     catch (Exception ex)
