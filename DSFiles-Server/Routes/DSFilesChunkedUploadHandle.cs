@@ -1,15 +1,9 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Shared;
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.AspNetCore.Routing.Template;
-using System;
+using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
-using System.IO.Compression;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
-using System.Xml.Linq;
 using static DSFiles_Server.Routes.DSFilesUploadHandle;
 using static DSFiles_Shared.DiscordFilesSpliter;
 
@@ -23,11 +17,11 @@ namespace DSFiles_Server.Routes
         {
             Task.Factory.StartNew(() =>
             {
-                while(true)
+                while (true)
                 {
                     try
                     {
-                        foreach(var session in Sessions.ToArray())
+                        foreach (var session in Sessions.ToArray())
                         {
                             if ((DateTime.UtcNow - session.Value.LastUploaded).TotalSeconds > 20)
                             {
@@ -46,30 +40,35 @@ namespace DSFiles_Server.Routes
                 }
             });
         }
+
         public class UploadSession
         {
-            public required WebHookHelper WebHook { get; set; }
-            public required string FileName { get; set; }
+            public WebHookHelper WebHook { get; set; }
+            public string FileName { get; set; }
             public long FileSize { get; set; }
             public long TotalWritted { get; set; }
             public DateTime LastUploaded { get; set; }
             public int TotalChunks { get; set; }
             public int ChunkNum { get; set; }
-            public required byte[] Key { get; set; }
-            public required AesCTRStream AesStream { get; set; }
-            public required ulong[] AttachementsIDs { get; set; }
-            public required ulong[] MessagesIDs { get; set; }
+            public byte[] Key { get; set; }
+            public AesCTRStream AesStream { get; set; }
+            public ulong[] AttachementsIDs { get; set; }
+            public ulong[] MessagesIDs { get; set; }
         }
 
-        public static async Task HandleHandshake(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleHandshake(HttpRequest req, HttpResponse res)
         {
-            string? turnstileToken = req.Headers.Get("turnstile");
+            req.Headers.TryGetValue("turnstile", out var turnstile);
 
-            string? webHook = req.Headers.Get("webhook") ?? Environment.GetEnvironmentVariable("WEBHOOK");
-            string? fileName = req.Headers.Get("filename");
-            string? fileSizeStr = req.Headers.Get("filesize");
+            if (!req.Headers.TryGetValue("webhook", out var webHook))
+            {
+                webHook = Environment.GetEnvironmentVariable("WEBHOOK");
+            }
 
-            if (webHook == null || string.IsNullOrWhiteSpace(webHook) || webHook.Length > 256 || fileName == null || fileName.Length > 64 || fileSizeStr == null || !long.TryParse(fileSizeStr, out long fileSize) || fileSize <= 0)
+            req.Headers.TryGetValue("filename", out var fileName);
+            req.Headers.TryGetValue("filesize", out var fileSizeStr);
+
+            if (webHook.Count <= 0 || string.IsNullOrWhiteSpace(webHook) || ((string)webHook).Length > 256 || fileName.Count <= 0 || ((string)fileName).Length > 64 || fileSizeStr.Count <= 0 || !long.TryParse(fileSizeStr, out long fileSize) || fileSize <= 0)
             {
                 res.SendStatus(400, "Webhook or FileName or FileSize header is missing or invalid");
                 return;
@@ -99,23 +98,23 @@ namespace DSFiles_Server.Routes
                 MessagesIDs = new ulong[totalChunks]
             };
 
-            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-            res.AddHeader("Session-ID", sessionId.ToString());
-            res.AddHeader("ChunkSize", DiscordFilesSpliter.CHUNK_SIZE.ToString());
-            res.SendStatus(200,"Happy happy happy 😊");
+            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
+            res.Headers["Session-ID"] = (sessionId.ToString());
+            res.Headers["ChunkSize"] = (DiscordFilesSpliter.CHUNK_SIZE.ToString());
+            res.SendStatus(200, "Happy happy happy 😊");
         }
 
-        public static async Task HandleChunk(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleChunk(HttpRequest req, HttpResponse res)
         {
-            string sessionString = req.Headers.Get("Session-ID");
-           
+            req.Headers.TryGetValue("Session-ID", out var sessionString);
+
             if (string.IsNullOrWhiteSpace(sessionString) || !Guid.TryParse(sessionString, out Guid sessionGuid) || !Sessions.TryGetValue(sessionGuid, out UploadSession session))
             {
                 res.SendStatus(410, "410 Session not provided");
                 return;
             }
 
-            string chunkStr = req.Headers.Get("chunk");
+            req.Headers.TryGetValue("chunk", out var chunkStr);
 
             if (!int.TryParse(chunkStr, out int chunkIndex) || chunkIndex <= 0)
             {
@@ -137,7 +136,7 @@ namespace DSFiles_Server.Routes
             {
                 if (session.TotalChunks != session.ChunkNum + 1 && httpStream.Length != DiscordFilesSpliter.CHUNK_SIZE)
                 {
-                    res.SendStatus(422,"File is not exactly " + DiscordFilesSpliter.CHUNK_SIZE + " bytes");
+                    res.SendStatus(422, "File is not exactly " + DiscordFilesSpliter.CHUNK_SIZE + " bytes");
                     return;
                 }
 
@@ -145,7 +144,7 @@ namespace DSFiles_Server.Routes
 
                 byte[] content = new byte[httpStream.Length];
                 int readed = 0, totalReaded = 0;
-           
+
                 while ((readed = await httpStream.ReadAsync(content, totalReaded, content.Length - totalReaded)) > 0)
                 {
                     totalReaded += readed;
@@ -166,9 +165,9 @@ namespace DSFiles_Server.Routes
                     ulong attachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                     ulong messageId = ulong.Parse((string)response["id"]);
 
-                    if (attachementId <= 0 || messageId <= 0) 
+                    if (attachementId <= 0 || messageId <= 0)
                         throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
-                    
+
                     session.MessagesIDs[chunkIndex] = messageId;
                     session.AttachementsIDs[chunkIndex] = attachementId;
                     session.TotalWritted += content.Length;
@@ -195,15 +194,14 @@ namespace DSFiles_Server.Routes
                                 ref webHook
                             );
 
-                            res.SendStatus(200, uploaded.Json);
+                            await res.WriteAsync(uploaded.Json);
                             Sessions.TryRemove(sessionGuid, out _);
                             return;
                         }
                     }
 
                     session.ChunkNum++;
-                    res.SendStatus(200, $"Chunk {session.ChunkNum}/{session.TotalChunks} uploaded 🥵");
-                    return;
+                    await res.SendStatus(200, $"Chunk {session.ChunkNum}/{session.TotalChunks} uploaded 🥵");
                 }
             }
         }

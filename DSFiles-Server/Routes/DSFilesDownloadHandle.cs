@@ -2,7 +2,9 @@
 
 using DSFiles_Server.Helpers;
 using DSFiles_Shared;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Primitives;
 using System.Buffers;
 using System.Data;
 using System.Net;
@@ -63,18 +65,18 @@ namespace DSFiles_Server.Routes
 
         // private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
-        public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleFile(HttpRequest req, HttpResponse res)
         {
             try
             {
-                bool fullFile = req.QueryString.Get("file") != null;
+                bool fullFile = req.Query["file"].Count > 0;
 
-                string[] urlSplited = req.Url.AbsolutePath.Split('/');
+                string[] urlSplited = req.Path.ToString().Split('/');
                 string[] seedSpltied = urlSplited[2].Split(':');
 
                 if (seedSpltied.Length! > 2 && urlSplited.Length != 3)
                 {
-                    res.SendStatus(400); //Seed invalida
+                    res.StatusCode = 400; //Seed invalida
                     return;
                 }
 
@@ -97,13 +99,13 @@ namespace DSFiles_Server.Routes
                     if (config.VersionNumber > ByteConfig.ClassVersion)
                     {
                         res.StatusCode = 405;
-                        res.Send($"This seed was made with a newer version ({config.VersionNumber}) of the client, nor you are from the feature, this server is outdated or the seed is gibberish");
+                        await res.WriteAsync(($"This seed was made with a newer version ({config.VersionNumber}) of the client, nor you are from the feature, this server is outdated or the seed is gibberish"));
                         return;
                     }
                     else if (config.VersionNumber < ByteConfig.ClassVersion)
                     {
                         res.StatusCode = 405;
-                        res.Send($"This seed was made with an older version (Client {config.VersionNumber}) of the client, download the file from the correct client version.");
+                        await res.WriteAsync(($"This seed was made with an older version (Client {config.VersionNumber}) of the client, download the file from the correct client version."));
                         return;
                     }
                     else if (config.VersionNumber != currentVersion)
@@ -117,7 +119,7 @@ namespace DSFiles_Server.Routes
 
                     string extension = fileName.Contains('.') ? Path.GetExtension(fileName).Trim('.') : "";
 
-                    res.Send("This seed was made from a deprecated version (probably the first one) please download the the correct client version, probably it is the oldest one\n\nHere is the compiled seed: " +
+                    await res.WriteAsync("This seed was made from a deprecated version (probably the first one) please download the the correct client version, probably it is the oldest one\n\nHere is the compiled seed: " +
                         Encoding.UTF8.GetBytes(fileNameWithoutExt).BrotliCompress().ToBase64Url() + ':' + extension + ':' + seed.Deflate().ToBase64Url());
                     return;
                 }
@@ -149,33 +151,37 @@ namespace DSFiles_Server.Routes
 
                 if (ids.Length > 5)
                 {
-                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                    res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
 
-                    if (req.Headers.Get("user-agent").Contains("bot", StringComparison.InvariantCultureIgnoreCase))
+                    if (!req.Headers.TryGetValue("user-agent", out StringValues userAgent) || userAgent.ToString().Contains("bot", StringComparison.InvariantCultureIgnoreCase))
                     {
+                        req.Headers.TryGetValue("authority", out var authority);
                         res.ContentType = "text/html; charset=utf-8";
-                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage, req.Headers.Get("authority")));
+                        res.SendStatus(200, string.Join(Properties.Resources.BotsPage, authority.ToString()));
                         return;
                     }
                 }
                 else
                 {
-                    res.AddHeader("Cache-Control", "public, max-age=31536000, immutable");
+                    res.Headers["Cache-Control"] = ("public, max-age=31536000, immutable");
                 }
 
-                contentTypeProvider.TryGetContentType(fileName, out string? contentType);;
+                contentTypeProvider.TryGetContentType(fileName, out string? contentType); ;
 
-                res.AddHeader("Content-Type", contentType ?? "application/octet-stream");
-                res.AddHeader("Accept-Ranges", "bytes");
-                //res.AddHeader("ETAG", etag.ToBase64Url());
+                res.Headers["Content-Type"] = (contentType ?? "application/octet-stream");
+                res.Headers["Accept-Ranges"] = ("bytes");
+                //res.AddHeader("ETAG"] =etag.ToBase64Url());
 
-                if (config.Compression) res.AddHeader("content-encoding", "br");
+                if (config.Compression)
+                    res.Headers["content-encoding"] = ("br");
 
-                if (fullFile) res.AddHeader("Content-Disposition", $"attachment; filename=\"{fileName}\"");
+                if (fullFile)
+                    res.Headers["Content-Disposition"] = ($"attachment; filename=\"{fileName}\"");
 
-                if (!fullFile) res.Headers.Set(HttpResponseHeader.AcceptRanges, "bytes");
+                if (!fullFile)
+                    res.Headers.AcceptRanges = "bytes";
 
-                string range = req.Headers.Get("range");
+                string range = req.Headers.Range;
 
                 /*StringBuilder sb = new StringBuilder();
                 var copy = req.Headers;
@@ -183,7 +189,7 @@ namespace DSFiles_Server.Routes
                 {
                     sb.AppendLine(h.Key + ':' + h.Value);
                 }
-                res.Headers.Add("cosa", Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString())));*/
+                res.Headers["cosa"] = (Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString())));*/
 
                 if (!fullFile && range != null)
                 {
@@ -201,26 +207,20 @@ namespace DSFiles_Server.Routes
                     long start = (chunk * CHUNK_SIZE) + offset;
                     long end = contentLength - 1;
 
-                    res.ContentLength64 = end - start + 1;
-                    res.AddHeader("Content-Range", $"bytes {start}-{end}/{contentLength}");
+                    res.ContentLength = end - start + 1;
+                    res.Headers["Content-Range"] = ($"bytes {start}-{end}/{contentLength}");
                     res.StatusCode = 206;
-                    res.OutputStream.Write([], 0, 0);
+                    res.BodyWriter.Write([]);
 
                     await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
                     return;
                 }
 
-                res.ContentLength64 = contentLength;
+                res.ContentLength = contentLength;
 
                 //res.OutputStream.Write([], 0, 0);
 
                 //Thread.Sleep(200);
-
-                if (!res.OutputStream.CanWrite)
-                {
-                    res.Close();
-                    return;
-                }
 
                 await SendFullFile(res, key, attachments, 0);
             }
@@ -230,17 +230,17 @@ namespace DSFiles_Server.Routes
 
                 try
                 {
-                    res.Headers.Remove(HttpRequestHeader.CacheControl);
+                    res.Headers.CacheControl = "";
                 }
                 catch { }
                 finally
                 {
-                    res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+                    res.Headers["Cache-Control"] = "no-cache, no-store, no-transform";
                 }
 
                 Program.WriteException(ref ex);
 
-                res.SendStatus(500, ex.ToString());
+                await res.SendStatus(500, ex.ToString());
             }
         }
 
@@ -248,11 +248,12 @@ namespace DSFiles_Server.Routes
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpListenerResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
+        private static async Task SendFullFile(HttpResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
         {
             int part = 0;
+            var stream = res.BodyWriter.AsStream();
 
-            using (AesCTRStream ts = new AesCTRStream(res.OutputStream, key))
+            using (AesCTRStream ts = new AesCTRStream(stream, key))
             {
                 while (part < attachments.Length)
                 {
@@ -264,7 +265,7 @@ namespace DSFiles_Server.Routes
                         {
                             string url = refreshedUrls[e - part];
 
-                            if (!res.OutputStream.CanWrite)
+                            if (!stream.CanWrite)
                             {
                                 throw new IOException("Client disconnected.");
                             }
@@ -308,7 +309,7 @@ namespace DSFiles_Server.Routes
                                         {
                                             await ts.WriteAsync(buffer, 0, bytesRead);
 
-                                            /*if (offset < CHUNK_SIZE) 
+                                            /*if (offset < CHUNK_SIZE)
                                                 offset += bytesRead;*/
                                         }
 
@@ -324,28 +325,26 @@ namespace DSFiles_Server.Routes
 
                         if (ex.StatusCode == HttpStatusCode.NotFound)
                         {
-                            res.Headers.Remove(HttpRequestHeader.CacheControl);
-                            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-                            res.SendCatError(204);
-                            res.Close();
+                            res.Headers.CacheControl = "";
+                            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
+                            await res.SendCatError(204);
                             return;
                         }
                         else
                         {
                             res.StatusCode = (int)ex.StatusCode;
-                            res.Send(ex.ToString());
-                            res.Close();
+                            await res.WriteAsync((ex.ToString()));
                         }
                     }
                     catch (HttpListenerException ex)
                     {
-                        Console.Error.WriteLine(ex.Message);
+                        await Console.Error.WriteLineAsync(ex.Message);
                         return;
                     }
                     catch (Exception ex)
                     {
                         Program.WriteException(ref ex);
-                        res.Send(ex.ToString());
+                        await res.BodyWriter.WriteAsync(Encoding.UTF8.GetBytes(ex.ToString()));
                         return;
                     }
 
@@ -353,18 +352,14 @@ namespace DSFiles_Server.Routes
                 }
             }
 
-            await res.OutputStream.FlushAsync();
-
-            res.Close();
+            await res.BodyWriter.FlushAsync();
         }
-
-
 
         private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];
 
         //Ancient old code xd
 
-        /*private static async Task SendChunk(HttpListenerResponse res, string[] attachments, int chunk)
+        /*private static async Task SendChunk(HttpResponse res, string[] attachments, int chunk)
         {
             int retry = 0;
 

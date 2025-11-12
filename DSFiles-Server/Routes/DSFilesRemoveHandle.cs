@@ -1,19 +1,15 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Shared;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
+using Microsoft.AspNetCore.Http;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace DSFiles_Server.Routes
 {
     internal static class DSFilesRemoveHandle
     {
-        public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleFile(HttpRequest req, HttpResponse res)
         {
-            var token = req.RawUrl.Split('/').Last();
+            var token = req.Path.ToString().Split('/').Last();
 
             var splited = token.Split(':');
 
@@ -35,7 +31,7 @@ namespace DSFiles_Server.Routes
 
             await webHookHelper.RemoveMessages(ids, progress);
 
-            res.Send(sb.ToString());
+            await res.WriteAsync(sb.ToString());
         }
     }
 }

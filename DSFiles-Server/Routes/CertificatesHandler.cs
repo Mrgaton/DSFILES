@@ -1,4 +1,5 @@
 ﻿using DSFiles_Server.Helpers;
+using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
@@ -62,19 +63,19 @@ namespace DSFiles_Server.Routes
         {
             return $"public, max-age={(long)Math.Max(0, (notAfter.ToUniversalTime() - DateTime.UtcNow).TotalSeconds)}";
         }
-        public static async Task HandleCertificate(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleCertificate(HttpRequest req, HttpResponse res)
         {
             try
             {
-                string[] urlSplited = req.Url.AbsolutePath.Split('/');
+                string[] urlSplited = req.Path.ToString().Split('/');
                 string domain = urlSplited.Last();
 
-                res.Headers.Set("content-type", "application/json");
+                res.Headers["content-type"] = "application/json";
 
                 if (CertsCache.TryGetValue(domain, out var entry))
                 {
-                    res.AddHeader("Cache-Control", GetCertCacheAge(entry.notAfter));
-                    res.Send(entry.json);
+                    res.Headers["Cache-Control"] = GetCertCacheAge(entry.notAfter);
+                    await res.WriteAsync(entry.json);
                     return;
                 }
 
@@ -91,13 +92,13 @@ namespace DSFiles_Server.Routes
                 var json = JsonSerializer.Serialize(obj);
 
                 CertsCache.TryAdd(domain, (cert2.NotAfter, json));
-                res.AddHeader("Cache-Control", GetCertCacheAge(cert2.NotAfter));
-                res.Send(json);
+                res.Headers["Cache-Control"] = ( GetCertCacheAge(cert2.NotAfter));
+                await res.WriteAsync(json);
             }
             catch (Exception ex)
             {
                 res.StatusCode = 500;
-                res.Send(ex.ToString());
+                await res.WriteAsync(ex.ToString());
 
                 Console.WriteLine(ex.ToString());
             }

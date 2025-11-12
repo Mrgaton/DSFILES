@@ -1,8 +1,11 @@
 ﻿using DSFiles_Server.Helpers;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using SkiaSharp;
 using System.Diagnostics;
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace DSFiles_Server.Routes
 {
@@ -34,9 +37,9 @@ namespace DSFiles_Server.Routes
             { }
         }
 
-        private static void HandleInformation(HttpListenerRequest req, HttpListenerResponse res)
+        private static async Task HandleInformation(HttpRequest req, HttpResponse res)
         {
-            res.Send(@"Information of ConsoleAnimation endpoint query params:
+            await res.WriteAsync(@"Information of ConsoleAnimation endpoint query params:
 
 link | url = the url of the media you want to convert to ascii
 
@@ -59,28 +62,27 @@ mccn | compression = the amount of rgb value that have to change to change the c
 ");
         }
 
-        public static void HandleAnimation(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleAnimation(HttpRequest req, HttpResponse res)
         {
-            if (req.Headers.Get("accept").Contains("html", StringComparison.InvariantCultureIgnoreCase))
+            if (req.Headers.TryGetValue("accept", out var accept) && ((string)accept).Contains("html", StringComparison.InvariantCultureIgnoreCase))
             {
                 HandleInformation(req, res);
                 return;
             }
 
-            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
+            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
             res.ContentType = "text/plain";
 
             //res.ContentLength64 = long.MaxValue;
 
-            res.SendChunked = true;
 
             string gifName = "Gif";
 
-            string url = req.QueryString["link"] ?? req.QueryString["l"] ?? req.QueryString["u"] ?? req.QueryString["url"];
+            string url = req.Query["link"].FirstOrDefault() ?? req.Query["l"].FirstOrDefault() ?? req.Query["u"].FirstOrDefault() ?? req.Query["url"];
 
             if (url == null)
             {
-                res.Send("Please set the a photo or gif in the query parameter 'url'");
+                await res.WriteAsync("Please set the a photo or gif in the query parameter 'url'");
                 return;
             }
 
@@ -93,27 +95,27 @@ mccn | compression = the amount of rgb value that have to change to change the c
             gifNameByte[0] = (byte)char.ToUpper((char)gifNameByte[0]);
             gifName = Encoding.UTF8.GetString(gifNameByte);
 
-            int timeOffset = int.Parse(req.QueryString["offset"] ?? req.QueryString["of"] ?? req.QueryString["o"] ?? "-8");
+            int timeOffset = int.Parse(req.Query["offset"].FirstOrDefault() ?? req.Query["of"].FirstOrDefault() ?? req.Query["o"].FirstOrDefault() ?? "-8");
 
             var config = new ConversorConfig()
             {
                 Name = gifName,
 
-                Invert = bool.TryParse(req.QueryString["i"], out var invert) && invert,
-                HDR = bool.TryParse(req.QueryString["hdr"], out var hdr) && hdr,
-                Pixel = bool.TryParse(req.QueryString["pixel"] ?? req.QueryString["p"], out var pixel) && pixel,
+                Invert = bool.TryParse(req.Query["i"], out var invert) && invert,
+                HDR = bool.TryParse(req.Query["hdr"], out var hdr) && hdr,
+                Pixel = bool.TryParse(req.Query["pixel"].FirstOrDefault() ?? req.Query["p"], out var pixel) && pixel,
 
-                FpsDivisor = Math.Max(1, int.Parse(req.QueryString["fps"] ?? req.QueryString["fd"] ?? req.QueryString["f"] ?? "1")),
-                WidthDivisor = Math.Max(1, int.Parse(req.QueryString["wd"] ?? req.QueryString["w"] ?? "1")),
-                HeightDivisor = Math.Max(1, int.Parse(req.QueryString["hd"] ?? req.QueryString["h"] ?? "1") * 2),
-                MinColorChangeNeeded = Math.Max(1, int.Parse(req.QueryString["mccn"] ?? req.QueryString["compression"] ?? req.QueryString["c"] ?? req.QueryString["comp"] ?? "75"))
+                FpsDivisor = Math.Max(1, int.Parse(req.Query["fps"].FirstOrDefault() ?? req.Query["fd"].FirstOrDefault() ?? req.Query["f"].FirstOrDefault() ?? "1")),
+                WidthDivisor = Math.Max(1, int.Parse(req.Query["wd"].FirstOrDefault() ?? req.Query["w"].FirstOrDefault() ?? "1")),
+                HeightDivisor = Math.Max(1, int.Parse(req.Query["hd"].FirstOrDefault() ?? req.Query["h"].FirstOrDefault() ?? "1") * 2),
+                MinColorChangeNeeded = Math.Max(1, int.Parse(req.Query["mccn"].FirstOrDefault() ?? req.Query["compression"].FirstOrDefault() ?? req.Query["c"].FirstOrDefault() ?? req.Query["comp"].FirstOrDefault() ?? "75"))
             };
 
             Stopwatch sw = new Stopwatch();
 
             sw.Start();
 
-            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result), res.OutputStream);
+            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result), res.Body);
 
             while (true)
             {
@@ -121,13 +123,13 @@ mccn | compression = the amount of rgb value that have to change to change the c
                 {
                     var data = rawFrames[i];
 
-                    res.OutputStream.Write(data, 0, data.Length);
+					res.Body.Write(data, 0, data.Length);
 
                     if (rawFrames.Length == 1)
                     {
                         while (true)
                         {
-                            res.OutputStream.Write(AnsiHelper.SetPosition(0, 0));
+							res.Body.Write(AnsiHelper.SetPosition(0, 0));
 
                             Thread.Sleep(5 * 1000);
                         }

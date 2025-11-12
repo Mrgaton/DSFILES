@@ -1,20 +1,12 @@
-﻿
-using DSFiles_Client.Helpers;
+﻿using DSFiles_Client.Helpers;
 using DSFiles_Shared;
 using System;
 using System.IO;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using Terminal.Gui;
-using Terminal.Gui.App;
-using Terminal.Gui.Views;
 using Application = Terminal.Gui.App.Application;
 using MessageBox = Terminal.Gui.Views.MessageBox;
-
 
 namespace DSFiles_Client.CGuis
 {
@@ -67,7 +59,7 @@ namespace DSFiles_Client.CGuis
                     {
                         await DiscordFilesSpliter.Decode(seed, key, fs);
                     }
-                   
+
                     //byte[] fileSeed = Convert.FromBase64String("AQMgxMbmo5kPC0BEaaeFEhAUUEQAq4USEB4whI2uhRIQCgDEV7GFEhA=");
 
                     //WFIMEncoder.Decode(fileSeed, "resultado.zip").GetAwaiter().GetResult();

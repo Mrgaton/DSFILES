@@ -4,10 +4,9 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using Application = Terminal.Gui.App.Application;
-using Terminal.Gui.Views;
-using Terminal.Gui.App;
 using System.Threading.Tasks;
+using Terminal.Gui.Views;
+using Application = Terminal.Gui.App.Application;
 using Clipboard = System.Windows.Forms.Clipboard;
 
 namespace DSFiles_Client.CGuis
@@ -26,7 +25,7 @@ namespace DSFiles_Client.CGuis
                 Application.Run<Download>();
                 this.Enabled = true;
             };
-       
+
             uploadButton.Accepting += (s, e) =>
             {
                 System.Windows.Forms.OpenFileDialog ofd = new System.Windows.Forms.OpenFileDialog()
@@ -52,7 +51,8 @@ namespace DSFiles_Client.CGuis
                     }
                     catch { }
 
-                    Application.Invoke(async() => {
+                    Application.Invoke(async () =>
+                    {
                     retry:
 
                         if (!File.Exists(Program.WebHookFileName))
@@ -106,17 +106,20 @@ namespace DSFiles_Client.CGuis
 
                             int reply = MessageBox.Query("DSFiles Manager", "Do you want to compress this file?", "None", "Fastest", "Optimal", "Smallest");
 
-                            switch(reply)
+                            switch (reply)
                             {
                                 case 0:
                                     compLevel = CompressionLevel.NoCompression;
                                     break;
+
                                 case 1:
                                     compLevel = CompressionLevel.Fastest;
                                     break;
+
                                 case 2:
                                     compLevel = CompressionLevel.Optimal;
                                     break;
+
                                 case 3:
                                     compLevel = CompressionLevel.SmallestSize;
                                     break;
@@ -162,7 +165,7 @@ namespace DSFiles_Client.CGuis
 
                         DiscordFilesSpliter.ConsoleProgress = progress;
 
-                        Task.Factory.StartNew(async() =>
+                        Task.Factory.StartNew(async () =>
                         {
                             var result = await DiscordFilesSpliter.EncodeCore(webHookHelper, fileName, stream, compLevel);
 

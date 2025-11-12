@@ -1,6 +1,5 @@
 ﻿using DSFiles_Client.CGuis;
 using System;
-using System.Text.RegularExpressions;
 using Terminal.Gui.Drawing;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
@@ -39,5 +38,5 @@ namespace DSFiles_Client.Helpers
                 }
             });
         }
-    } 
+    }
 }

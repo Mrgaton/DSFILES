@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 
 public static class AnsiHelper
@@ -12,6 +11,7 @@ public static class AnsiHelper
     [DllImport("kernel32.dll")] private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
 
     [DllImport("kernel32.dll")] private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
     public static void InitConsle()
     {
         IntPtr handle = GetStdHandle(STD_OUTPUT_HANDLE);

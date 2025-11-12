@@ -1,31 +1,39 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Shared;
-using Microsoft.AspNetCore.Routing.Template;
+using Microsoft.AspNetCore.Http;
 using System.IO.Compression;
-using System.Net;
 using System.Security.Cryptography;
 
 namespace DSFiles_Server.Routes
 {
     internal static class DSFilesUploadHandle
     {
-        public static async Task HandleFile(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleFile(HttpRequest req, HttpResponse res)
         {
-            string? webHook = req.Headers.Get("webhook") ?? Environment.GetEnvironmentVariable("WEBHOOK");
-            string? fileName = req.Headers.Get("filename");
+            req.Headers.TryGetValue("webhook", out var webHook);
 
-            if (webHook == null || fileName == null || string.IsNullOrWhiteSpace(webHook))
+            if (webHook.Count <= 0)
+            {
+                webHook = Environment.GetEnvironmentVariable("WEBHOOK");
+            }
+
+            req.Headers.TryGetValue("filename", out var fileName);
+
+            if (webHook.Count <= 0 || fileName.Count <= 0 || string.IsNullOrWhiteSpace(webHook))
             {
                 res.SendStatus(400, "Webhook or FileName header is missing");
                 return;
             }
 
+            bool compress = false;
+            req.Headers.TryGetValue("compress", out var compressStr);
+            bool.TryParse(compressStr, out compress);
+
             using (var httpStream = new HttpStream(req))
             {
                 if (httpStream.Length > 100 * 1000 * 1000)
                 {
-                    res.Send("File is too big");
-
+                    await res.WriteAsync("File is too big");
                     return;
                 }
 
@@ -34,25 +42,23 @@ namespace DSFiles_Server.Routes
                 {
                     try
                     {
-                        res.OutputStream.Write([]);
-                        res.OutputStream.Flush();
-
                         byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
-                        CompressionLevel compLevel = DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.SmallestSize : CompressionLevel.NoCompression; 
+                        CompressionLevel compLevel = !compress? CompressionLevel.NoCompression : DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.SmallestSize : CompressionLevel.NoCompression;
 
                         var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook),
                             name: fileName,
                             stream: httpStream,
                             level: compLevel,
-                            onTheFlyCompression: true,
-                            encodeKey: key, 
-                            tempIdsWriter: tempIds, 
+                            onTheFlyCompression: compress && compLevel != CompressionLevel.NoCompression,
+                            encodeKey: key,
+                            tempIdsWriter: tempIds,
                             disposeIdsWritter: false
                         );
 
-                        res.Send(result.Json);
+                        await res.WriteAsync(result.Json);
+                        await res.Body.FlushAsync();
                     }
-                    catch (Exception ex) 
+                    catch (Exception ex)
                     {
                         Console.Error.WriteLine(ex.ToString());
 
@@ -62,6 +68,8 @@ namespace DSFiles_Server.Routes
                         var ids = (await new StreamReader(ms).ReadToEndAsync()).Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => ulong.TryParse(l, out ulong id) ? id : 0).ToArray();
 
                         await new WebHookHelper(Program.client, webHook).RemoveMessages(ids);
+
+                        throw ex;
                     }
                 }
             }
@@ -72,19 +80,17 @@ namespace DSFiles_Server.Routes
             private readonly Stream _innerStream;
             private readonly long _contentLength;
 
-            public HttpStream(HttpListenerRequest request)
-                _innerStream = request.InputStream;
+            public HttpStream(HttpRequest request)
+            {
+                _innerStream = request.Body ?? throw new ArgumentNullException(nameof(request.Body));
 
                 if (long.TryParse(request.Headers["Content-Length"], out var length))
-                }
+                    _contentLength = length;
                 else
-                {
                     throw new InvalidOperationException("Content-Length header is missing or invalid.");
-                }
             }
 
             public override long Length => _contentLength;
-
             public override bool CanRead => _innerStream.CanRead;
             public override bool CanSeek => _innerStream.CanSeek;
             public override bool CanWrite => _innerStream.CanWrite;
@@ -97,7 +103,19 @@ namespace DSFiles_Server.Routes
 
             public override void Flush() => _innerStream.Flush();
 
-            public override int Read(byte[] buffer, int offset, int count) => _innerStream.Read(buffer, offset, count);
+            // Synchronous Read - deliberately not supported so callers must use async.
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException("Synchronous Read is not supported. Use ReadAsync instead.");
+            }
+
+            // Async read forwarding
+            public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+                => _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
+
+            // If you're on .NET Standard 2.1 / .NET Core 3.0+:
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+                => _innerStream.ReadAsync(buffer, cancellationToken);
 
             public override long Seek(long offset, SeekOrigin origin) => _innerStream.Seek(offset, origin);
 
@@ -107,13 +125,12 @@ namespace DSFiles_Server.Routes
 
             protected override void Dispose(bool disposing)
             {
-                if (disposing)
-                {
-                    _innerStream.Dispose();
-                }
-
+                if (disposing) _innerStream.Dispose();
                 base.Dispose(disposing);
             }
+
+            public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
+                => _innerStream.CopyToAsync(destination, bufferSize, cancellationToken);
         }
     }
 }

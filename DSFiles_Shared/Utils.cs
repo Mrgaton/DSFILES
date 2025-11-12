@@ -179,6 +179,7 @@ namespace DSFiles_Shared
 
             return BitConverter.ToUInt64(buffer, 0);
         }
+
         public static void RemoveFromStart(this MemoryStream ms, int numberOfBytesToRemove)
         {
             if (ms == null)
@@ -210,7 +211,7 @@ namespace DSFiles_Shared
 
             Span<byte> sourceSpan = fullDataSpan.Slice(numberOfBytesToRemove);
 
-            Span<byte> destinationSpan = fullDataSpan; 
+            Span<byte> destinationSpan = fullDataSpan;
 
             sourceSpan.CopyTo(destinationSpan);
 
@@ -225,7 +226,6 @@ namespace DSFiles_Shared
             {
                 ms.Position = currentPosition - numberOfBytesToRemove;
             }
-          
         }
     }
 }

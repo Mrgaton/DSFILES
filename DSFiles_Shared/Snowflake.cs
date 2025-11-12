@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace DSFiles_Shared
+﻿namespace DSFiles_Shared
 {
     public static class Snowflake
     {
@@ -19,13 +13,13 @@ namespace DSFiles_Shared
         private const int MaxWorker = (1 << WorkerBits) - 1;      // 31
         private const int MaxProcess = (1 << ProcessBits) - 1;     // 31
         private const int MaxIncrement = (1 << IncrBits) - 1;        // 4095
+
         public static Parts Decompose(ulong snowflake)
         {
             ulong msSinceDiscordEpoch = (snowflake >> 22);
             int workerId = (int)((snowflake >> 17) & 0x1F);
             int processId = (int)((snowflake >> 12) & 0x1F);
             int increment = (int)(snowflake & 0xFFF);
-
 
             return new Parts(
                 Raw: snowflake,
@@ -43,6 +37,7 @@ namespace DSFiles_Shared
 
             return Decompose(value);
         }
+
         private static void ValidateWorker(int workerId)
         {
             if ((uint)workerId > MaxWorker)
@@ -79,6 +74,7 @@ namespace DSFiles_Shared
             if (ms > MaxTimestampField)
                 throw new ArgumentOutOfRangeException(nameof(ms), $"Timestamp field must fit in {TimestampBits} bits.");
         }
+
         public readonly record struct Parts(
             ulong Raw,
             ulong MillisecondsSinceDiscordEpoch,

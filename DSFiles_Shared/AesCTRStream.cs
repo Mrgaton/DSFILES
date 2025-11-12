@@ -21,12 +21,10 @@ namespace DSFiles_Shared
         private readonly byte[] Nonce;
         private readonly int _nonceOffsetInBlock;
 
-
         private readonly Aes _aes;
         private readonly ICryptoTransform _encryptEcb;
 
         private readonly Stream _baseStream;
-
 
         public AesCTRStream(Stream? baseStream, byte[]? subKey = null)
         {
@@ -64,6 +62,7 @@ namespace DSFiles_Shared
         {
             _baseStream.Flush();
         }
+
         public override long Seek(long offset, SeekOrigin origin)
         {
             long newPosition;
@@ -73,12 +72,15 @@ namespace DSFiles_Shared
                 case SeekOrigin.Begin:
                     newPosition = offset;
                     break;
+
                 case SeekOrigin.Current:
                     newPosition = this.Position + offset;
                     break;
+
                 case SeekOrigin.End:
                     newPosition = this.Length + offset;
                     break;
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(origin));
             }
@@ -129,13 +131,14 @@ namespace DSFiles_Shared
         private readonly byte[] _keystream = new byte[BlockSize];
 
         private readonly byte[] _keystream32 = new byte[2 * BlockSize];
+
         public void Transform(Span<byte> buffer, long position)
         {
             int length = buffer.Length;
             if (length == 0) return;
 
-            int offsetInBlock = (int)(position & (BlockSize - 1)); 
-            ulong counterValue = (ulong)(position >> 4); 
+            int offsetInBlock = (int)(position & (BlockSize - 1));
+            ulong counterValue = (ulong)(position >> 4);
             int processedBytes = 0;
 
             if (offsetInBlock != 0)
@@ -166,9 +169,9 @@ namespace DSFiles_Shared
                         for (int i = 0; i < numAvxPairs; i++)
                         {
                             WriteCounterToBlock(counterValue);
-                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, 0); 
+                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, 0);
                             WriteCounterToBlock(counterValue + 1);
-                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, BlockSize); 
+                            _encryptEcb.TransformBlock(_counterBlock, 0, BlockSize, _keystream32, BlockSize);
 
                             Span<byte> dstSlice = buffer.Slice(processedBytes, 2 * BlockSize);
 
@@ -177,7 +180,7 @@ namespace DSFiles_Shared
                             ref byte ksRef = ref MemoryMarshal.GetReference<byte>(_keystream32);
 
                             var ksVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref ksRef);
-                            var dataVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref dstRef); 
+                            var dataVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref dstRef);
 
                             var resultVec = Avx2.Xor(ksVec, dataVec);
 
@@ -204,7 +207,6 @@ namespace DSFiles_Shared
                     for (int j = 0; j < dstU.Length; j++)
                         dstU[j] ^= ksU[j];
 
-
                     processedBytes += BlockSize;
                     counterValue++;
                 }
@@ -220,6 +222,7 @@ namespace DSFiles_Shared
                          _keystream.AsSpan().Slice(0, bytesRemaining));
             }
         }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteCounterToBlock(ulong counter)
         {

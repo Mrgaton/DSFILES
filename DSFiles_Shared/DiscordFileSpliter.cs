@@ -1,14 +1,11 @@
-﻿    using System.Buffers;
+﻿using System.Buffers;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.IO.Pipelines;
-using System.Net.Sockets;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading;
 using System.Web;
 using static AnsiHelper;
 
@@ -61,23 +58,25 @@ namespace DSFiles_Shared
                 }
             }
         }
+
         public static string EncodeAttachementName(ulong channelId, int index, int amount) => (BitConverter.GetBytes((channelId) ^ (ulong)index ^ (ulong)amount)).ToBase64Url().TrimStart('_') + '_' + (amount - index);
-       
-        private static readonly string[] NonCompresableExt = [ ".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".wav" ];
+
+        private static readonly string[] NonCompresableExt = [".zip", ".rar", ".7z", ".gz", ".bz2", ".xz", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zst", ".br", ".jar", ".war", ".ear", ".epub", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".jp2", ".j2k", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", ".wmv", ".ogv", ".3gp", ".3g2", ".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".wma", ".wav"];
 
         public static bool IsCompresable(string? ext, long filesize)
         {
-            if (filesize > MaxCompressionFileSize) 
+            if (filesize > MaxCompressionFileSize)
                 return false;
 
-            return !NonCompresableExt.Any(e => string.Equals(e ,ext,StringComparison.InvariantCultureIgnoreCase));
+            return !NonCompresableExt.Any(e => string.Equals(e, ext, StringComparison.InvariantCultureIgnoreCase));
         }
+
         public static CompressionLevel ShouldCompress(string? ext, long filesize)
         {
             if (IsCompresable(ext, filesize))
             {
                 Console.Write("Do you want to compress this file? (you should not compress images, videos, zips or any similar packed or already compressed content) [Y,N]:");
-                
+
                 char response = GetConsoleKeyChar(['y', 's', 'n', 'o']);
                 bool compress = response is 'y' or 's';
 
@@ -136,6 +135,7 @@ namespace DSFiles_Shared
         private static Stopwatch sw = new Stopwatch();
 
         private static int MaxCompressionFileSize = (int.MaxValue / 8) * 7;
+
         public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, level);
 
         public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, bool onTheFlyCompression = false, byte[] encodeKey = null, StreamWriter tempIdsWriter = null, bool disposeIdsWritter = true)
@@ -165,7 +165,7 @@ namespace DSFiles_Shared
                         long totalRead = 0;
 
                         byte[] buffer = new byte[Math.Max(origStream.Length / 100, 1)];
-                       
+
                         while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) != 0)
                         {
                             await compStream.WriteAsync(buffer, 0, bytesRead);
@@ -174,14 +174,14 @@ namespace DSFiles_Shared
 
                             double percentage = (double)totalRead / originalFileSize * 100;
 
-                            ConsoleProgress.Report(AnsiColors.DarkYellow + $"Compressing please wait"+AnsiColors.DarkGray+":"+AnsiColors.Silver+ $" {percentage.ToString("0.0")}%");
+                            ConsoleProgress.Report(AnsiColors.DarkYellow + $"Compressing please wait" + AnsiColors.DarkGray + ":" + AnsiColors.Silver + $" {percentage.ToString("0.0")}%");
                         }
 
                         await compStream.FlushAsync();
                     }
 
                     long compressedSize = tempNewStream.Length;
-                    ConsoleProgress.Report(AnsiColors.Gold + "\nFile compressed " + AnsiColors.BrightCyan+ Math.Round((compressedSize / (double)originalFileSize) * 100, 3)  + AnsiColors.LightGray+ "%" + AnsiColors.Gold + " compress ratio new size " +AnsiColors.Cyan + ByteSizeToString(compressedSize) + AnsiColors.Gold + " from "+ AnsiColors.Cyan + ByteSizeToString(originalFileSize));
+                    ConsoleProgress.Report(AnsiColors.Gold + "\nFile compressed " + AnsiColors.BrightCyan + Math.Round((compressedSize / (double)originalFileSize) * 100, 3) + AnsiColors.LightGray + "%" + AnsiColors.Gold + " compress ratio new size " + AnsiColors.Cyan + ByteSizeToString(compressedSize) + AnsiColors.Gold + " from " + AnsiColors.Cyan + ByteSizeToString(originalFileSize));
                     ConsoleProgress.Report("");
                     stream = tempNewStream;
                     stream.Position = 0;
@@ -201,7 +201,7 @@ namespace DSFiles_Shared
 
                 sw.Start();
 
-                byte[] key = encodeKey ?? RandomNumberGenerator.GetBytes(new Random().Next(10,16));
+                byte[] key = encodeKey ?? RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
 
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
@@ -249,8 +249,6 @@ namespace DSFiles_Shared
                         if (sw.ElapsedMilliseconds < 2000)
                             Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
-
-
 
                     if (compress && onTheFlyCompression)
                     {
@@ -540,6 +538,7 @@ namespace DSFiles_Shared
                 return config;
             }
         }
+
         public static Stream DecodeCorePipe(byte[] seed, byte[]? key)
         {
             var pipe = new Pipe();
@@ -559,6 +558,7 @@ namespace DSFiles_Shared
 
             return pipe.Reader.AsStream();
         }
+
         private static void WriteException(ref Exception ex, params string[] messages)
         {
             var lastColor = Console.ForegroundColor;
@@ -568,6 +568,7 @@ namespace DSFiles_Shared
             Console.WriteLine();
             Console.ForegroundColor = lastColor;
         }
+
         public class Upload
         {
             public string FileName { get; set; }
@@ -575,16 +576,17 @@ namespace DSFiles_Shared
             public string SeedString { get => this.Seed.ToBase64Url() + (this.Key != null ? '$' + this.Key.ToBase64Url() : null); }
             public string DownloadToken { get => $"{Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(this.FileName)).BrotliCompress().ToBase64Url()}:{Path.GetExtension(this.FileName).TrimStart('.')}:{SeedString}"; }
             public byte[] Secret { get; set; }
-            public byte[] Key{ get; set; }
+            public byte[] Key { get; set; }
             public WebHookHelper WebHook { get; set; }
             public string RemoveToken { get => $"{this.Secret.ToBase64Url()}:{BitConverter.GetBytes(this.WebHook.id).ToBase64Url()}:{this.WebHook.token}"; }
 
             public string WebLink { get => $"https://df.gato.ovh/d/{SeedString}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(this.FileName))}"; }
             public string UploadLog { get; set; }
-            public string Json { get => $"{{\"name\":\"{FileName}\",\"seed\":\"{SeedString}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\"}}";}
+            public string Json { get => $"{{\"name\":\"{FileName}\",\"seed\":\"{SeedString}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\"}}"; }
 
             public Upload(string fileName, byte[] seed, byte[] key, byte[] secret, ref WebHookHelper webHookHelper)
             {
+                this.FileName = fileName;
                 this.Secret = secret;
                 this.Seed = seed;
                 this.Key = key;
@@ -596,12 +598,12 @@ namespace DSFiles_Shared
                 sb.AppendLine($"Seed: `{this.Seed}`");
                 sb.AppendLine($"RemoveToken: `{this.RemoveToken}`");
 
-               /*this.Shortened = SendJspaste(fileSeed);
+                /*this.Shortened = SendJspaste(fileSeed);
 
-                if (!string.IsNullOrEmpty(Shortened))
-                {
-                    sb.AppendLine($"Shortened: `{this.Shortened}`");
-                }*/
+                 if (!string.IsNullOrEmpty(Shortened))
+                 {
+                     sb.AppendLine($"Shortened: `{this.Shortened}`");
+                 }*/
 
                 sb.AppendLine($"`WebLink:` {this.WebLink}");
 
@@ -640,6 +642,7 @@ namespace DSFiles_Shared
             private BitReader _in;
 
             private const long PrecomputedDelta = 19323285528;
+
             public byte[] Compress(ulong[] xs)
             {
                 if ((xs[0] >> 62) != 0)
@@ -666,6 +669,7 @@ namespace DSFiles_Shared
                 _out.Flush();
                 return _out.ToArray();
             }
+
             public ulong[] Decompress(byte[] compressed)
             {
                 var results = new List<ulong>();
@@ -695,7 +699,7 @@ namespace DSFiles_Shared
             /*private static int GetBits(long v)
             {
                 ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
-                
+
                 for(int i = 0; i < 64;i++)
                 {
                     if (uv < (1UL << i))
@@ -706,6 +710,7 @@ namespace DSFiles_Shared
 
                 return 0;
             }*/
+
             private void WriteDod(long v)
             {
                 ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
@@ -772,6 +777,7 @@ namespace DSFiles_Shared
                 long v = (long)((uv >> 1) ^ (ulong)-(long)(uv & 1));
                 return v;
             }
+
             public class BitWriter
             {
                 private readonly List<byte> _bytes = new();
@@ -806,6 +812,7 @@ namespace DSFiles_Shared
                 public byte[] ToArray()
                     => _bytes.ToArray();
             }
+
             public class BitReader
             {
                 private readonly byte[] _bytes;
@@ -816,6 +823,7 @@ namespace DSFiles_Shared
                 {
                     _bytes = bytes;
                 }
+
                 public long BitsLeft
                 {
                     get
@@ -825,6 +833,7 @@ namespace DSFiles_Shared
                         return totalBits - bitsRead;
                     }
                 }
+
                 public bool HasMoreBits
                 {
                     get

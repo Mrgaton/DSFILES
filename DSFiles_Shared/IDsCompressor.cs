@@ -1,19 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
-
-namespace DSFiles_Shared
+﻿namespace DSFiles_Shared
 {
-
     public class IDsCompressor
     {
         private BitReader _in;
-        private BitWriter _out; 
+        private BitWriter _out;
 
         private const long PrecomputedTimespanDelta = 3500;
+
         public byte[] Compress(ulong[] xs)
         {
             var flakes = xs.Select(Snowflake.Decompose).ToArray();
@@ -58,14 +51,13 @@ namespace DSFiles_Shared
                 timePrevDelta = timeDelta;
 
                 int workerDelta = (worker - workerPrevValue);
-                long workerDod = workerDelta- workerPrevDelta;
+                long workerDod = workerDelta - workerPrevDelta;
                 WriteSmallDod(workerDod);
                 workerPrevValue = worker;
                 workerPrevDelta = workerDelta;
 
-
                 int processDelta = (process - processPrevValue);
-                long processDod = processDelta- processPrevDelta;
+                long processDod = processDelta - processPrevDelta;
                 WriteSmallDod(processDod);
                 processPrevValue = process;
                 processPrevDelta = processDelta;
@@ -78,16 +70,15 @@ namespace DSFiles_Shared
             }
 
             _out.Flush();
-            
+
             return _out.ToArray();
         }
-
 
         private static int GetBits(long v)
         {
             ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
 
-            for(int i = 0; i < 64;i++)
+            for (int i = 0; i < 64; i++)
             {
                 if (uv < (1UL << i))
                 {
@@ -97,6 +88,7 @@ namespace DSFiles_Shared
 
             return 0;
         }
+
         private void WriteTimeDod(long v)
         {
             ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
@@ -135,6 +127,7 @@ namespace DSFiles_Shared
 
             Console.Write("\n");
         }
+
         private void WriteSmallDod(long v)
         {
             ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
@@ -172,7 +165,6 @@ namespace DSFiles_Shared
 
             Console.Write("\n");
         }
-
 
         private void WriteIncrementDod(long v)
         {
@@ -212,7 +204,7 @@ namespace DSFiles_Shared
 
             Console.Write("\n");
         }
-        
+
         public class BitWriter
         {
             private readonly List<byte> _bytes = new();
@@ -275,6 +267,7 @@ namespace DSFiles_Shared
             long v = (long)((uv >> 1) ^ (ulong)-(long)(uv & 1));
             return v;
         }
+
         /*public ulong[] Decompress(byte[] compressed)
         {
             var results = new List<ulong>();
@@ -311,6 +304,7 @@ namespace DSFiles_Shared
             {
                 _bytes = bytes;
             }
+
             public long BitsLeft
             {
                 get
@@ -320,6 +314,7 @@ namespace DSFiles_Shared
                     return totalBits - bitsRead;
                 }
             }
+
             public bool HasMoreBits
             {
                 get

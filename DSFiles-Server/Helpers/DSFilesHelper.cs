@@ -16,7 +16,6 @@ namespace DSFiles_Server.Helpers
 
         private static readonly int maxCacheSize = 12 * 1000;
 
-
         public static async Task<long> GetAttachmentSize(string url)
         {
             string trimedUrl = url.Split('?')[0];

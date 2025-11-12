@@ -1,5 +1,5 @@
 ﻿using DSFiles_Server.Helpers;
-using System.Net;
+using Microsoft.AspNetCore.Http;
 using System.Security.Cryptography;
 
 namespace DSFiles_Server.Routes
@@ -8,10 +8,9 @@ namespace DSFiles_Server.Routes
     {
         private static byte[] Header = Convert.FromBase64String("TVqQAAMAAAAEAAAA//8AALgAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+AAAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1vZGUuDQ0KJAAAAAAAAAB6SD5EPilQFz4pUBc+KVAXN1HDFzopUBf8qFQWNilQF/yoUxY9KVAX/KhVFiopUBf8qFEWOClQF2ZcVBY6KVAXdVFRFj0pUBc+KVEXWClQF82rWRY/KVAXzatSFj8pUBdSaWNoPilQFwAAAAAAAAAAAAAAAAAAAABQRQAAZIYDAC56QmYAAAAAAAAAAPAAIiALAg4nAJAAAAAQAAAA0AAAMGMBAADgAAAAAACAAQAAAAAQAAAAAgAABgAAAAAAAAAGAAAAAAAAAACAAQAABAAAAAAAAAIAYAEAABAAAAAAAAAQAAAAAAAAAAAQAAAAAAAAEAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAcAEA4AEAAAAAAAAAAAAAADABAKQNAAAAAAAAAAAAAOBxAQAcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACoZQEAQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABVUFgwAAAAAADQAAAAEAAAAAAAAAAEAAAAAAAAAAAAAAAAAACAAADgVVBYMQAAAAAAkAAAAOAAAACIAAAABAAAAAAAAAAAAAAAAAAAQAAA4FVQWDIAAAAAABAAAABwAQAAAgAAAIwAAAAAAAAAAAAAAAAAAEAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANC4yNABVUFghDSQCCPHrOp86dnpw");
 
-
         private static byte[] RandomBuffer = null;
 
-        public static void HandleDownload(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleDownload(HttpRequest req, HttpResponse res)
         {
             if (RandomBuffer == null)
             {
@@ -20,20 +19,20 @@ namespace DSFiles_Server.Routes
                 RandomNumberGenerator.Fill(RandomBuffer);
             }
 
-            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-            res.AddHeader("Content-Length", "9223372036854775807");
-            res.AddHeader("Content-Disposition", "attachment; filename=pato.exe");
+            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
+            res.Headers["Content-Length"] = ("9223372036854775807");
+            res.Headers["Content-Disposition"] = ("attachment; filename=pato.exe");
             res.ContentType = "application/octet-stream";
-            res.ContentLength64 = long.MaxValue;
-            res.OutputStream.Write(Header);
+            res.ContentLength = long.MaxValue;
+            await res.Body.WriteAsync(Header);
 
             while (true)
             {
-                res.OutputStream.Write(RandomBuffer);
+                await res.Body.WriteAsync(RandomBuffer);
             }
         }
 
-        public static void HandleUpload(HttpListenerRequest req, HttpListenerResponse res)
+        public static async Task HandleUpload(HttpRequest req, HttpResponse res)
         {
             byte[] buffer = new byte[8 * 1024 * 1024];
 
@@ -41,11 +40,11 @@ namespace DSFiles_Server.Routes
 
             while (bytesRead > 0)
             {
-                bytesRead = req.InputStream.Read(buffer, 0, buffer.Length);
+                bytesRead = await req.Body.ReadAsync(buffer, 0, buffer.Length);
             }
 
-            res.AddHeader("Cache-Control", "no-cache, no-store, no-transform");
-            res.SendStatus(200);
+            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
+            await res.SendStatus(200);
         }
     }
 }

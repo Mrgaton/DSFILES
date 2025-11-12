@@ -2,7 +2,6 @@
 using DSFiles_Shared;
 using System;
 using System.Linq;
-using Terminal.Gui;
 using Terminal.Gui.App;
 using Terminal.Gui.Views;
 
@@ -30,10 +29,11 @@ namespace DSFiles_Client.CGuis
 
                     if (splited.Any(c => c.Contains('$')))
                     {
-                        Application.Invoke(() => {
+                        Application.Invoke(() =>
+                        {
                             MessageBox.ErrorQuery("DSFiles Manager", "The seed may be not a remove token", "ok");
                         });
-                        
+
                         return;
                     }
 

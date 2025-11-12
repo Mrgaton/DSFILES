@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Text;
 
 public class BrokenSaveFileDialog
 {

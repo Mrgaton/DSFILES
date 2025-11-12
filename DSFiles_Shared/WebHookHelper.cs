@@ -1,7 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Web;
 
@@ -37,14 +36,15 @@ namespace DSFiles_Shared
             }
         }
 
-        public WebHookHelper() { }
+        public WebHookHelper()
+        { }
+
         public WebHookHelper(HttpClient client, string url)
         {
             _client = client;
 
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = url).Result)
             {
-              
                 if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
 
                 ParseJson(response.Content.ReadAsStringAsync().Result);
@@ -98,15 +98,15 @@ namespace DSFiles_Shared
 
         public async Task<HttpStatusCode> SendMessage(string content, string username) => await SendMessage(content, username, "");
 
-        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) => 
+        public async Task<HttpStatusCode> SendMessage(string content, string username, string avatarUrl) =>
             (await MakeRequest(HttpMethod.Post, WebHookUrl, "{\"content\":" + HttpUtility.JavaScriptStringEncode(content) + ",\"username\":\"" + username + "\",\"avatar\":\"" + avatarUrl + "\"}")).StatusCode;
 
         public async Task<string> GetMessage(ulong id) => await (await MakeRequest(HttpMethod.Get, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
         public async Task<string> RemoveMessage(ulong id) => await (await MakeRequest(HttpMethod.Delete, WebHookUrl + "/messages/" + id)).Content.ReadAsStringAsync();
 
-
         public async Task RemoveMessages(ulong[] ids) => await RemoveMessages(ids, DiscordFilesSpliter.ConsoleProgress);
+
         public async Task RemoveMessages(ulong[] ids, IProgress<string> p)
         {
             foreach (ulong id in ids)
@@ -185,6 +185,7 @@ namespace DSFiles_Shared
         }
 
         public async Task<string> PostFileToWebhook(string fileName, byte[] buffer) => await PostFileToWebhook(fileName, buffer, 0, buffer.Length);
+
         public async Task<string> PostFileToWebhook(string fileName, byte[] buffer, int offset, int count)
         {
             return await PostFileToWebhook(new MultipartFormDataContent() {

@@ -31,7 +31,6 @@ namespace DSFiles_Client
                 // This exception occurs if clip.exe is not found in the system's PATH.
                 throw new Exception("Error: clip.exe not found. Is it in your system's PATH?", ex);
             }
-
         }
     }
 }

@@ -55,7 +55,6 @@ public class BrokenOpenFileDialog
     public bool Success { get; private set; }
     public string[] Files { get; private set; }
 
-
     /// <summary>
     /// Open a single file
     /// </summary>

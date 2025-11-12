@@ -1,5 +1,5 @@
-﻿using System.Collections.Specialized;
-using System.Net;
+﻿using Microsoft.AspNetCore.Http;
+using System.Collections.Specialized;
 using System.Text;
 
 namespace DSFiles_Server.Helpers
@@ -61,46 +61,30 @@ namespace DSFiles_Server.Helpers
         }
     }
 
-    public static class HttpListenerResponseExtensions
+    public static class HttpResponseExtensions
     {
-        public static void SendStatus(this HttpListenerResponse res, int status, string data = null)
+        public static async Task SendStatus(this HttpResponse res, int status, string? data = null)
         {
             res.StatusCode = status;
 
             if (data == null)
             {
-                res.Close();
                 return;
             }
 
-            res.AddHeader("warning", Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
-            res.Send(Encoding.UTF8.GetBytes(data));
-            res.Close();
+            res.Headers["warning"] = (Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
+            await res.WriteAsync(data);
         }
 
-        public static void SendCatError(this HttpListenerResponse res, int status)
+        public static async Task SendCatError(this HttpResponse res, int status)
         {
             res.ContentType = "text/html; charset=utf-8";
-            res.Send($"<!doctypehtml><html lang=en><meta charset=UTF-8><meta content=\"width=device-width,initial-scale=1\"name=viewport><style>body,html{{background-color:#000;margin:0;padding:0;height:100%;display:flex;justify-content:center;align-items:center;overflow:hidden}}img{{width:100%;height:100%;object-fit:cover}}</style><img alt=Image src=https://http.cat/{status}>");
-            res.Close();
+            await res.WriteAsync($"<!doctypehtml><html lang=en><meta charset=UTF-8><meta content=\"width=device-width,initial-scale=1\"name=viewport><style>body,html{{background-color:#000;margin:0;padding:0;height:100%;display:flex;justify-content:center;align-items:center;overflow:hidden}}img{{width:100%;height:100%;object-fit:cover}}</style><img alt=Image src=https://http.cat/{status}>");
         }
 
-        public static void RedirectCatError(this HttpListenerResponse res, int status)
+        public static void RedirectCatError(this HttpResponse res, int status)
         {
             res.Redirect("https://http.cat/" + status);
-            res.Close();
-        }
-
-        public static void Send(this HttpListenerResponse res, string data) => res.Send(Encoding.UTF8.GetBytes(data));
-
-        public static void Send(this HttpListenerResponse res, byte[] data)
-        {
-            try
-            {
-                res.ContentLength64 = data.Length;
-                res.OutputStream.Write(data, 0, data.Length);
-            }
-            catch { }
         }
     }
 }
