@@ -73,12 +73,9 @@ namespace DSFiles_Server.Routes
             private readonly long _contentLength;
 
             public HttpStream(HttpListenerRequest request)
-            {
                 _innerStream = request.InputStream;
 
                 if (long.TryParse(request.Headers["Content-Length"], out var length))
-                {
-                    _contentLength = length;
                 }
                 else
                 {
