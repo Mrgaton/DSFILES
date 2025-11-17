@@ -157,7 +157,7 @@ namespace DSFiles_Server
                         httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls13;
                     });
 
-                    listenOptions.Protocols = HttpProtocols.Http2 | HttpProtocols.Http3;
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
                 });
             });
 
