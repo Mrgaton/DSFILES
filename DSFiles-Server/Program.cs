@@ -52,7 +52,7 @@ namespace DSFiles_Server
                     if (separatorIndex == -1)
                         continue;
 
-                    string key = line.Substring(0, separatorIndex).ToUppeProcess.GetCurrentProcess().MainModule.FileNamer();
+                    string key = line.Substring(0, separatorIndex).ToUpper();
 
                     string value = line.Substring(separatorIndex + 1);
 
