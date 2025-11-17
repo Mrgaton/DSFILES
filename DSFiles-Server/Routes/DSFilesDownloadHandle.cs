@@ -80,7 +80,12 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(seedSpltied[0].FromBase64Url().BrotliDecompress()) : urlSplited[3];
+                string fileName = seedSpltied.Length > 2 ? Encoding.UTF8.GetString(seedSpltied[0].FromBase64Url().BrotliDecompress()) : urlSplited[urlSplited.Length - 1];
+
+                if (urlSplited.Length > 4)
+                {
+                    fullFile = urlSplited[3] == "f";
+                }
 
                 string[] seedData = seedSpltied[seedSpltied.Length - 1].Split('$');
                 byte[] seed = (seedData[0].FromBase64Url().Inflate());
@@ -230,12 +235,12 @@ namespace DSFiles_Server.Routes
 
                 try
                 {
-                    res.Headers.CacheControl = "";
+                    res.Headers["Cache-Control"] = "no-cache, no-store, no-transform";
                 }
                 catch { }
                 finally
                 {
-                    res.Headers["Cache-Control"] = "no-cache, no-store, no-transform";
+
                 }
 
                 Program.WriteException(ref ex);
@@ -351,8 +356,6 @@ namespace DSFiles_Server.Routes
                     part += RefreshUrlsChunkSize;
                 }
             }
-
-            await res.BodyWriter.FlushAsync();
         }
 
         private static string CleanUrl(string uri) => uri.Split('/')[6].Split('?')[0];

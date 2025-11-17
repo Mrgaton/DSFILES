@@ -10,9 +10,9 @@ namespace DSFiles_Server.Routes
 {
     internal static class WebSocketHandler
     {
-        private static ConcurrentDictionary<Int128, List<WebSocket>> clients = new();
+        private static ConcurrentDictionary<Int128, ConcurrentDictionary<WebSocket,ulong>> clients = new();
 
-        public static async void HandleWebSocket(HttpContext ctx, WebSocket ws)
+        public static async Task HandleWebSocket(HttpContext ctx, WebSocket ws)
         { 
             var poolKey = BitConverter.ToInt128(MD5.HashData(Encoding.UTF8.GetBytes(ctx.Request.Path)), 0);
 
@@ -20,44 +20,31 @@ namespace DSFiles_Server.Routes
 
             if (!clients.ContainsKey(poolKey))
             {
-                clients[poolKey] = new List<WebSocket>();
+                clients[poolKey] = new();
             }
 
             //DisableUtf8Validation(socket);
 
             var pool = clients[poolKey];
 
-            pool.Add(ws);
+            pool[ws] = 0;
 
-            foreach (var client in pool)
+            foreach (var element in pool)
             {
                 try
                 {
+                    var client = element.Key;
+
                     if (client.State != WebSocketState.Open && client.State != WebSocketState.Connecting)
                     {
-                        pool.Remove(client);
+                        pool.TryRemove(element);
                     }
                 }
                 catch { }
             }
 
-            _ = HandleClient(ws, poolKey);
+            await HandleClient(ws, poolKey);
         }
-
-        public static void DisableUtf8Validation(WebSocket webSocket)
-        {
-            var validateUtf8Field = webSocket.GetType().GetField("_validateUtf8", BindingFlags.NonPublic | BindingFlags.Instance);
-
-            if (validateUtf8Field != null)
-            {
-                validateUtf8Field.SetValue(webSocket, false);
-            }
-            else
-            {
-                throw new InvalidOperationException("No se encontró el campo '_validateUtf8'.");
-            }
-        }
-
         private static async Task HandleClient(WebSocket socket, Int128 poolKey)
         {
             byte[]? pool = ArrayPool<byte>.Shared.Rent(ushort.MaxValue);
@@ -81,7 +68,7 @@ namespace DSFiles_Server.Routes
 
                             if (result.MessageType == WebSocketMessageType.Close)
                             {
-                                clients[poolKey].Remove(socket);
+                                clients[poolKey].Remove(socket, out _);
 
                                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
                                 Console.WriteLine($"Client disconnected from pool: {poolKey}");
@@ -89,8 +76,10 @@ namespace DSFiles_Server.Routes
                             }
                             else
                             {
-                                foreach (var client in clients[poolKey])
+                                foreach (var elements in clients[poolKey])
                                 {
+                                    var client = elements.Key;
+
                                     if (client.State == WebSocketState.Open) // client != sender &&
                                     {
                                         try
@@ -117,7 +106,7 @@ namespace DSFiles_Server.Routes
             }
             catch (WebSocketException ex)
             {
-                clients[poolKey].Remove(socket);
+                clients[poolKey].Remove(socket, out _);
 
                 if (clients[poolKey].Count <= 0)
                 {

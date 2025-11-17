@@ -65,14 +65,20 @@ namespace DSFiles_Server.Helpers
     {
         public static async Task SendStatus(this HttpResponse res, int status, string? data = null)
         {
-            res.StatusCode = status;
-
-            if (data == null)
+            try
             {
-                return;
-            }
+                res.StatusCode = status;
 
-            res.Headers["warning"] = (Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
+                if (data == null)
+                {
+                    return;
+                }
+
+                res.Headers["warning"] = (Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
+            }
+            catch { }
+
+
             await res.WriteAsync(data);
         }
 

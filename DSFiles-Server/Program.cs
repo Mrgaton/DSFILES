@@ -1,12 +1,18 @@
 ﻿using DSFiles_Server.Helpers;
 using DSFiles_Server.Routes;
+using DSFiles_Shared;
+using DynamicCertificatePinning;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Win32;
 using System.Net;
+using System.Net.Quic;
+using System.Net.Security;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 
 namespace DSFiles_Server
 {
@@ -31,177 +37,8 @@ namespace DSFiles_Server
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
 
-        private static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
-            /*Stopwatch totalStopwatch = new Stopwatch();
-            Stopwatch compressionStopwatch = new Stopwatch();
-            Stopwatch decompressionStopwatch = new Stopwatch();
-
-            totalStopwatch.Start();
-
-            int dataSize = 1024 * 1024 * 64;
-            int keySize = 32;
-
-            byte[] keyd = RandomNumberGenerator.GetBytes(keySize);
-
-            Console.WriteLine($"Generated a {keySize}-byte key.");
-
-            byte[] originalData = (new byte[dataSize]).Select(e => e = 100).ToArray();
-
-            Console.WriteLine($"Generated {dataSize / (1024 * 1024)} MB of random data.");
-
-            byte[] firstPassData = null;
-            byte[] secondPassData = null;
-            bool verificationSucceeded = false;
-
-            Console.WriteLine("\n--- Starting First Transformation Pass ---");
-            try
-            {
-                using (MemoryStream originalMs = new MemoryStream(originalData))
-                using (MemoryStream firstPassMs = new MemoryStream())
-                using (AesCTRStream transform1 = new AesCTRStream(originalMs, keyd))
-                {
-                    transform1.CopyTo(firstPassMs);
-                    firstPassData = firstPassMs.ToArray();
-                    Console.WriteLine("First transformation completed.");
-                    Console.WriteLine($"Processed {firstPassData.Length} bytes.");
-
-                    if (dataSize > 0 && !originalData.SequenceEqual(firstPassData))
-                    {
-                        Console.WriteLine("Intermediate data is different from original (as expected).");
-                    }
-                    else if (dataSize > 0)
-                    {
-                        Console.WriteLine("WARNING: Intermediate data is THE SAME as original. The transform might be ineffective or identity.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error during first transformation: {ex.Message}");
-                totalStopwatch.Stop();
-                return;
-            }
-
-            Console.WriteLine("\n--- Starting Second Transformation Pass ---");
-            if (firstPassData == null)
-            {
-                Console.WriteLine("Error: First pass data is null, cannot proceed.");
-                totalStopwatch.Stop();
-                return;
-            }
-            try
-            {
-                using (MemoryStream firstPassInputMs = new MemoryStream(firstPassData))
-                using (MemoryStream secondPassMs = new MemoryStream())
-
-                using (AesCTRStream transform2 = new AesCTRStream(firstPassInputMs, keyd))
-                {
-                    transform2.CopyTo(secondPassMs);
-                    secondPassData = secondPassMs.ToArray();
-                    Console.WriteLine("Second transformation completed.");
-                    Console.WriteLine($"Processed {secondPassData.Length} bytes.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error during second transformation: {ex.Message}");
-                totalStopwatch.Stop();
-                return;
-            }
-
-            Console.WriteLine("\n--- Verification ---");
-            if (originalData.Length != secondPassData?.Length)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"ERROR: Length mismatch! Original: {originalData.Length}, Final: {secondPassData?.Length ?? -1}");
-                Console.ResetColor();
-            }
-            else
-            {
-                bool areEqual = originalData.SequenceEqual(secondPassData);
-
-                if (areEqual)
-                {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("SUCCESS: Original data and final data are identical.");
-                    Console.WriteLine("The transformation IS reversible with the same parameters.");
-                    Console.ResetColor();
-                    verificationSucceeded = true;
-                }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("FAILURE: Original data and final data differ.");
-                    Console.WriteLine("The transformation IS NOT reversible or there's a bug.");
-                    Console.ResetColor();
-
-                    for (int i = 0; i < Math.Min(originalData.Length, secondPassData.Length); ++i)
-                    {
-                        if (originalData[i] != secondPassData[i])
-                        {
-                            Console.WriteLine($"First difference found at index {i}: Original=0x{originalData[i]:X2}, Final=0x{secondPassData[i]:X2}");
-                            break;
-                        }
-                    }
-                }
-            }
-
-            totalStopwatch.Stop();
-
-            if (verificationSucceeded)
-            {
-                Console.WriteLine("\n--- Compression of Transformed Data ---");
-                byte[] compressedData = null;
-                byte[] decompressedData = null;
-
-                try
-                {
-                    compressionStopwatch.Start();
-                    using (MemoryStream compressedMs = new MemoryStream())
-                    {
-                        using (BrotliStream gzipStream = new BrotliStream(compressedMs, CompressionMode.Compress, leaveOpen: true)) // leaveOpen allows compressedMs to be read later
-                        {
-                             gzipStream.Write(firstPassData);
-                        }
-
-                        compressedData = compressedMs.ToArray();
-                    }
-                    compressionStopwatch.Stop();
-                    double compressionRatio = (double)compressedData.Length / firstPassData.Length;
-                    Console.WriteLine($"Compressed size: {compressedData.Length} bytes");
-                    Console.WriteLine($"Compression Ratio: {compressionRatio:P4}");
-                    Console.WriteLine($"Time to compress: {compressionStopwatch.ElapsedMilliseconds} ms");
-
-                    if (firstPassData.SequenceEqual(decompressedData))
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("SUCCESS: Decompressed data matches the first pass transformed data.");
-                        Console.ResetColor();
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("FAILURE: Decompressed data does NOT match the first pass transformed data!");
-                        Console.ResetColor();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    compressionStopwatch.Stop();
-                    decompressionStopwatch.Stop();
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Error during compression/decompression: {ex.Message}");
-                    Console.ResetColor();
-                }
-            }
-            else
-            {
-                Console.WriteLine("\n--- Compression Skipped (Verification Failed) ---");
-            }
-
-            return;*/
-
             if (File.Exists(".env"))
             {
                 foreach (var line in File.ReadAllLines(".env").Select(l => l.Trim()))
@@ -221,6 +58,64 @@ namespace DSFiles_Server
                     Environment.SetEnvironmentVariable(key, value);
                 }
             }
+
+            var envPass = Environment.GetEnvironmentVariable("CertPass");
+
+            if (string.IsNullOrEmpty(envPass))
+            {
+                envPass = Convert.ToBase64String(RandomNumberGenerator.GetBytes(128));
+                File.AppendAllLines(".env", ["\nCertPass=" + envPass]);
+            }
+
+            CertManager manager = new(new() { CertPassword = envPass });
+
+            var cert = manager.GetOrCreateCert("qsap.gato.ovh");
+
+            SslApplicationProtocol AppProtocol = new("quic-proto/1");
+            var listenEndPoint = new IPEndPoint(IPAddress.Any, 443);
+
+            var listenerOptions = new QuicListenerOptions
+            {
+                ListenEndPoint = listenEndPoint,
+                ListenBacklog = 1024, // high backlog for bursts
+                ApplicationProtocols = new List<SslApplicationProtocol> { AppProtocol },
+                // Select connection options for each incoming connection
+                ConnectionOptionsCallback = (connection, hello, token) =>
+                {
+                    var serverConnOpts = new QuicServerConnectionOptions
+                    {
+                        DefaultStreamErrorCode = 0x0A,
+                        DefaultCloseErrorCode = 0x0B,
+
+                        MaxInboundBidirectionalStreams = 20,
+                        MaxInboundUnidirectionalStreams = 5,
+                        KeepAliveInterval = TimeSpan.FromSeconds(15),
+
+                        IdleTimeout = TimeSpan.FromMinutes(20),
+
+                        ServerAuthenticationOptions = new SslServerAuthenticationOptions
+                        {
+                            ServerCertificate = cert,
+                            ApplicationProtocols = new List<SslApplicationProtocol> { AppProtocol },
+                            ClientCertificateRequired = false,
+                            RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true // for testing only; do real validation in production
+                        }
+                    };
+
+
+                    return ValueTask.FromResult(serverConnOpts);
+                }
+            };
+
+            await using var listener = await QuicListener.ListenAsync(listenerOptions, CancellationToken.None);
+            Console.WriteLine($"Listening QUIC on {listenEndPoint}...");
+            
+            _ = Task.Run(() => QuicServer.AcceptLoopAsync(listener, default));
+
+
+
+
+         
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -251,12 +146,23 @@ namespace DSFiles_Server
             builder.WebHost.ConfigureKestrel((context, options) =>
             {
                 options.Limits.MaxRequestBodySize = 100 * 1024 * 1024;
+                options.Limits.MaxRequestLineSize = ushort.MaxValue;
+                options.Limits.MaxRequestHeadersTotalSize = ushort.MaxValue;
+
 
                 options.ListenAnyIP(PortNumber, listenOptions =>
                 {
-                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+                    listenOptions.UseHttps(httpsOptions =>
+                    {
+                        httpsOptions.ServerCertificateSelector = (ctx, host) =>
+                        {
+                            return manager.GetOrCreateCert(host);
+                        };
 
-                    //listenOptions.UseHttps();
+                        httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls13;
+                    });
+
+                    listenOptions.Protocols = HttpProtocols.Http2 | HttpProtocols.Http3;
                 });
             });
 
@@ -279,20 +185,22 @@ namespace DSFiles_Server
                 await ctx.Response.WriteAsync("OK");
             });
 
-            app.Map("/ws", async (HttpContext ctx) =>
+            app.Use(async (ctx, next) =>
             {
                 if (ctx.WebSockets.IsWebSocketRequest)
                 {
-                    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+                    var ws = await ctx.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { DangerousEnableCompression = false, DisableServerContextTakeover = true });
 
-                    WebSocketHandler.HandleWebSocket(ctx, ws);
+                    await WebSocketHandler.HandleWebSocket(ctx, ws);
                 }
                 else
                 {
-                    ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await next();
                 }
             });
 
+
+            //Redirector endpoints
             app.Map("/df/{**seed}", async (HttpContext ctx, string seed) =>
             {
                 ctx.Response.Redirect("/d/" + seed);
@@ -303,6 +211,7 @@ namespace DSFiles_Server
                 ctx.Response.Redirect("/d/" + seed);
             });
 
+            //Main endpoints
             app.MapGet("/d/{**seed}", async (HttpContext ctx, string seed) =>
             {
                 await DSFilesDownloadHandle.HandleFile(ctx.Request, ctx.Response);
@@ -318,6 +227,8 @@ namespace DSFiles_Server
                 await DSFilesRemoveHandle.HandleFile(ctx.Request, ctx.Response);
             });
 
+
+            //Chunks upload system
             app.MapPost("/cuh", async (HttpContext ctx) =>
             {
                 await DSFilesChunkedUploadHandle.HandleHandshake(ctx.Request, ctx.Response);
@@ -328,26 +239,31 @@ namespace DSFiles_Server
                 await DSFilesChunkedUploadHandle.HandleChunk(ctx.Request, ctx.Response);
             });
 
+            //Weird jspaste based shortner
             app.MapGet("/rd", async (HttpContext ctx) =>
             {
                 await RedirectHandler.HandleRedirect(ctx.Request, ctx.Response);
             });
 
+            //Never gona give you up
             app.MapGet("/rick", async (HttpContext ctx) =>
             {
                 ctx.Response.Redirect("https://youtu.be/dQw4w9WgXcQ");
             });
 
+            //Pato.exe my beloved
             app.MapGet("/download", async (HttpContext ctx) =>
             {
                 await SpeedTest.HandleDownload(ctx.Request, ctx.Response);
             });
 
+            //IDk what is this shit
             app.MapGet("/upload", async (HttpContext ctx) =>
             {
                 await SpeedTest.HandleUpload(ctx.Request, ctx.Response);
             });
 
+            //Amazing console animation
             app.MapGet("/animate", async (HttpContext ctx) =>
             {
                 await ConsoleAnimation.HandleAnimation(ctx.Request, ctx.Response);

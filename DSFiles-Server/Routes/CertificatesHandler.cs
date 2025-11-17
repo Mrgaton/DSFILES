@@ -35,7 +35,7 @@ namespace DSFiles_Server.Routes
 
                         if (remoteCertificate == null)
                         {
-                            throw new Exception("Failed to retrieve the certificate from the server.");
+                            throw new NullReferenceException("Failed to retrieve the certificate from the server.");
                         }
 
                         return new X509Certificate2(remoteCertificate);
@@ -50,14 +50,14 @@ namespace DSFiles_Server.Routes
                     if (attempt >= retries)
                     {
                         Console.WriteLine("Max retry attempts reached. Unable to fetch the certificate.");
-                        return null;
+                        throw;
                     }
 
                     Thread.Sleep(delayMilliseconds);
                 }
             }
 
-            return null;
+            throw new Exception("Unable to fetch the certificate after multiple attempts.");
         }
         public static string GetCertCacheAge(DateTime notAfter)
         {
@@ -68,7 +68,14 @@ namespace DSFiles_Server.Routes
             try
             {
                 string[] urlSplited = req.Path.ToString().Split('/');
-                string domain = urlSplited.Last();
+                string domain = urlSplited.LastOrDefault();
+
+                if (domain == null)
+                {
+                    res.StatusCode = 400;
+                    await res.WriteAsync("Domain not specified.");
+                    return;
+                }
 
                 res.Headers["content-type"] = "application/json";
 
@@ -98,9 +105,8 @@ namespace DSFiles_Server.Routes
             catch (Exception ex)
             {
                 res.StatusCode = 500;
-                await res.WriteAsync(ex.ToString());
-
-                Console.WriteLine(ex.ToString());
+                Console.Error.WriteLine(ex.ToString());
+                throw;
             }
         }
     }

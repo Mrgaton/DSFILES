@@ -191,7 +191,7 @@ namespace DSFiles_Shared
 
                 int messagesToSend = (int)((ulong)stream.Length / CHUNK_SIZE) + 1, messagesSended = 0;
 
-                List<ulong> attachmentsIdsList = new();
+                List<ulong> attachmentsIdsList = [];
                 List<ulong> messagesIdsList = [];
 
                 long totalWrited = 0;
@@ -572,8 +572,8 @@ namespace DSFiles_Shared
         public class Upload
         {
             public string FileName { get; set; }
-            public byte[] Seed { get; set; }
-            public string SeedString { get => this.Seed.ToBase64Url() + (this.Key != null ? '$' + this.Key.ToBase64Url() : null); }
+            public byte[] RawSeed { get; set; }
+            public string SeedString { get => this.RawSeed.ToBase64Url() + (this.Key != null ? '$' + this.Key.ToBase64Url() : null); }
             public string DownloadToken { get => $"{Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(this.FileName)).BrotliCompress().ToBase64Url()}:{Path.GetExtension(this.FileName).TrimStart('.')}:{SeedString}"; }
             public byte[] Secret { get; set; }
             public byte[] Key { get; set; }
@@ -588,14 +588,14 @@ namespace DSFiles_Shared
             {
                 this.FileName = fileName;
                 this.Secret = secret;
-                this.Seed = seed;
+                this.RawSeed = seed;
                 this.Key = key;
                 this.WebHook = webHookHelper;
 
                 StringBuilder sb = new StringBuilder();
 
                 sb.AppendLine($"FileName: `{fileName}`");
-                sb.AppendLine($"Seed: `{this.Seed}`");
+                sb.AppendLine($"Seed: `{this.RawSeed}`");
                 sb.AppendLine($"RemoveToken: `{this.RemoveToken}`");
 
                 /*this.Shortened = SendJspaste(fileSeed);

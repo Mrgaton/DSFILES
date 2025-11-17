@@ -1486,7 +1486,7 @@ namespace DSFiles_Client
 
                             UploadedFilesWriter.WriteLine(encoded.UploadLog);
 
-                            Console.Write("FileSeed: " + encoded.Seed);
+                            Console.Write("FileSeed: " + encoded.SeedString);
                         }
                         return;
 
@@ -1666,7 +1666,7 @@ namespace DSFiles_Client
             ClipClipboard.SetText(result.WebLink);
 
             Console.WriteLine(AnsiColors.BrightCyan + "WebLink" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.WebLink + '\n');
-            Console.Write(AnsiColors.BrightBlue + "FileSeed" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.Seed);
+            Console.Write(AnsiColors.BrightBlue + "FileSeed" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.SeedString);
             Console.ReadLine();
             Environment.Exit(0);
 

@@ -185,7 +185,7 @@ namespace DSFiles_Client.CGuis
                             catch { }
 
                             ((IProgress<string>)progress).Report("WebLink: " + result.WebLink);
-                            ((IProgress<string>)progress).Report("FileSeed: " + result.Seed);
+                            ((IProgress<string>)progress).Report("FileSeed: " + result.SeedString);
                         });
                     });
                 })));

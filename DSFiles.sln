@@ -1,13 +1,18 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.7.34031.279
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11205.157 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles_Client", "DSFiles-Client\DSFiles_Client.csproj", "{1AC0634D-4FCC-484B-B40E-ED2ED97D8437}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DSFiles_Server", "DSFiles-Server\DSFiles_Server.csproj", "{E9D9B636-78D0-4236-ADEB-FD922DEA20BA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSFiles_Shared", "DSFiles_Shared\DSFiles_Shared.csproj", "{4C450EC0-D624-4926-B852-77839B27CE52}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4F5C8B13-2C07-4A25-BF25-7EDF3E948A80}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
