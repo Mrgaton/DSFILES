@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
@@ -51,7 +52,7 @@ namespace DSFiles_Server
                     if (separatorIndex == -1)
                         continue;
 
-                    string key = line.Substring(0, separatorIndex).ToUpper();
+                    string key = line.Substring(0, separatorIndex).ToUppeProcess.GetCurrentProcess().MainModule.FileNamer();
 
                     string value = line.Substring(separatorIndex + 1);
 
@@ -59,13 +60,7 @@ namespace DSFiles_Server
                 }
             }
 
-            var envPass = Environment.GetEnvironmentVariable("CertPass");
-
-            if (string.IsNullOrEmpty(envPass))
-            {
-                envPass = Convert.ToBase64String(RandomNumberGenerator.GetBytes(128));
-                File.AppendAllLines(".env", ["\nCertPass=" + envPass]);
-            }
+            var envPass = Convert.ToBase64String(SHA512.HashData(File.ReadAllBytes(Process.GetCurrentProcess().MainModule.FileName)));
 
             CertManager manager = new(new() { CertPassword = envPass });
 
