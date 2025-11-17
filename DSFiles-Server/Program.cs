@@ -107,10 +107,10 @@ namespace DSFiles_Server
                 }
             };
 
-            await using var listener = await QuicListener.ListenAsync(listenerOptions, CancellationToken.None);
+           /* await using var listener = await QuicListener.ListenAsync(listenerOptions, CancellationToken.None);
             Console.WriteLine($"Listening QUIC on {listenEndPoint}...");
             
-            _ = Task.Run(() => QuicServer.AcceptLoopAsync(listener, default));
+            _ = Task.Run(() => QuicServer.AcceptLoopAsync(listener, default));*/
 
 
 
