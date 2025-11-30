@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Win32;
 using System.Diagnostics;
@@ -196,31 +197,17 @@ namespace DSFiles_Server
 
          
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                try
-                {
-                    using (RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\HTTP\Parameters", true))
-                    {
-                        if (key == null)
-                        {
-                            Console.WriteLine("Failed to open registry key.");
-                            return;
-                        }
-
-                        key.SetValue("UrlSegmentMaxLength", ushort.MaxValue / 10, RegistryValueKind.DWord);
-                        //key.SetValue("MaxRequestBytes", 1048576, RegistryValueKind.DWord); // 1 MB
-
-                        Console.WriteLine("Registry updated successfully.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"An error occurred: {ex.Message}");
-                }
-            }
-
             var builder = WebApplication.CreateBuilder(args);
+
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod() // This handles GET, POST, OPTIONS, PUT, etc.
+                          .AllowAnyHeader();
+                });
+            });
 
             builder.WebHost.ConfigureKestrel((context, options) =>
             {
@@ -245,6 +232,7 @@ namespace DSFiles_Server
                 });
             });
 
+
             var app = builder.Build();
 
             app.UseWebSockets();
@@ -256,6 +244,7 @@ namespace DSFiles_Server
 
             Console.WriteLine($"DSFILES awesome server listening on {PortNumber}...");
 
+   
             app.MapGet("/", async (ctx) => await ctx.Response.SendCatError(419));
 
             app.MapGet("/generate_204", async ctx =>
@@ -315,7 +304,7 @@ namespace DSFiles_Server
                 await DSFilesChunkedUploadHandle.HandleHandshake(ctx.Request, ctx.Response);
             });
 
-            app.MapMethods("/cuc", ["OPTIONS"], async (HttpContext ctx, string seed) =>
+            app.MapMethods("/{**seed}", ["OPTIONS"], async (HttpContext ctx) =>
             {
                 ctx.Response.StatusCode = StatusCodes.Status200OK;
                 await ctx.Response.WriteAsync("OK");
