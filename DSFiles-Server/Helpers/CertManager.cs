@@ -5,8 +5,8 @@ namespace DynamicCertificatePinning
 {
     public class CertOptions
     {
-        public ECCurve CurveAlgorithm { get; set; } = ECCurve.NamedCurves.nistP384;
-        public HashAlgorithmName HashAlgorithm { get; set; } = HashAlgorithmName.SHA384;
+        public ECCurve CurveAlgorithm { get; set; } = ECCurve.NamedCurves.nistP256;
+        public HashAlgorithmName HashAlgorithm { get; set; } = HashAlgorithmName.SHA256;
         public string? CertFileName { get; set; } = "pq_certificate.pfx";
         public string? CertPassword { get; set; } = "UWUGIRLINNEWYORK:o";
         public DateTimeOffset Expiration { get; set; } = DateTimeOffset.UtcNow.AddYears(2);
@@ -26,7 +26,7 @@ namespace DynamicCertificatePinning
             {
                 //return X509CertificateLoader.LoadCertificateFromFile(subjectName + this.Options.CertFileName);
 
-                return new X509Certificate2(subjectName + this.Options.CertFileName, this.Options.CertPassword, X509KeyStorageFlags.EphemeralKeySet);
+                return new X509Certificate2(subjectName + this.Options.CertFileName, this.Options.CertPassword, X509KeyStorageFlags.Exportable);
             }
 
             return CreateCert(subjectName);
@@ -72,7 +72,7 @@ namespace DynamicCertificatePinning
             if (this.Options.Save)
                 File.WriteAllBytes(subjectName + this.Options.CertFileName, pfxBytes);
 
-            return new X509Certificate2(pfxBytes, this.Options.CertPassword);
+            return new X509Certificate2(pfxBytes, this.Options.CertPassword, X509KeyStorageFlags.Exportable);
         }
     }
 }

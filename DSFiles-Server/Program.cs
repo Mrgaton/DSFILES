@@ -6,13 +6,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Runtime.InteropServices;
+using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Security.Cryptography.Xml;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace DSFiles_Server
@@ -37,9 +43,80 @@ namespace DSFiles_Server
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
+        private const string SignKey = "JLKSAJDLKJSO^DIH)UD)?KJBPXLKJSGPUYWFDLUTCCTOET/DTC";
 
+        private const string EncryptKey = "12345678901234567890123456789012";
+        public static string CreateSecureToken(object myJsonData)
+        {
+            var handler = new JwtSecurityTokenHandler();
+
+            string jsonString = JsonSerializer.Serialize(myJsonData);
+
+            var signKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SignKey));
+            var encKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(EncryptKey));
+
+            var descriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new[]
+                {
+                    new Claim("Content", jsonString)
+                }),
+
+                Expires = DateTime.UtcNow.AddHours(1),
+
+                SigningCredentials = new SigningCredentials(
+                    signKey,
+                    SecurityAlgorithms.HmacSha256Signature),
+
+                EncryptingCredentials = new EncryptingCredentials(
+                    encKey,
+                    SecurityAlgorithms.Aes256KW,
+                    SecurityAlgorithms.Aes256CbcHmacSha512)
+            };
+
+            return handler.WriteToken(handler.CreateToken(descriptor));
+        }
+
+        public static string? ProcessReturnedToken(string token)
+        {
+            var handler = new JwtSecurityTokenHandler();
+
+            var signKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SignKey));
+            var encKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(EncryptKey));
+
+            try
+            {
+                var validationParams = new TokenValidationParameters
+                {
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = signKey,
+
+                    TokenDecryptionKey = encKey,
+
+                    ValidateLifetime = true
+                };
+
+                var principal = handler.ValidateToken(token, validationParams, out _);
+
+                return principal.FindFirst("Content")?.Value;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed: {ex.Message}");
+                return null;
+            }
+        }
         private static async Task Main(string[] args)
         {
+            /*var e = CreateSecureToken("edsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasd");
+
+            Console.WriteLine(e);
+            var d = ProcessReturnedToken(e);
+            Console.WriteLine(d);*/
+
             if (File.Exists(".env"))
             {
                 foreach (var line in File.ReadAllLines(".env").Select(l => l.Trim()))
@@ -60,27 +137,38 @@ namespace DSFiles_Server
                 }
             }
 
-            var envPass = Convert.ToBase64String(SHA512.HashData(File.ReadAllBytes(Process.GetCurrentProcess().MainModule.FileName)));
+            string passwordPath = "cert_password.bin";
+
+
+            if(!File.Exists(passwordPath))
+            {
+                var passBytes = new byte[1024];
+                RandomNumberGenerator.Fill(passBytes);
+                File.WriteAllBytes(passwordPath, passBytes);
+            }
+
+            var envPass = Convert.ToBase64String(SHA512.HashData(File.ReadAllBytes(passwordPath)));
 
             CertManager manager = new(new() { CertPassword = envPass });
 
             var cert = manager.GetOrCreateCert("qsap.gato.ovh");
 
             SslApplicationProtocol AppProtocol = new("quic-proto/1");
-            var listenEndPoint = new IPEndPoint(IPAddress.Any, 443);
+            var listenEndPoint = new IPEndPoint(IPAddress.Any, 20022);
 
             var listenerOptions = new QuicListenerOptions
             {
                 ListenEndPoint = listenEndPoint,
-                ListenBacklog = 1024, // high backlog for bursts
+              
                 ApplicationProtocols = new List<SslApplicationProtocol> { AppProtocol },
-                // Select connection options for each incoming connection
                 ConnectionOptionsCallback = (connection, hello, token) =>
                 {
                     var serverConnOpts = new QuicServerConnectionOptions
                     {
                         DefaultStreamErrorCode = 0x0A,
                         DefaultCloseErrorCode = 0x0B,
+
+
 
                         MaxInboundBidirectionalStreams = 20,
                         MaxInboundUnidirectionalStreams = 5,
@@ -91,7 +179,7 @@ namespace DSFiles_Server
                         ServerAuthenticationOptions = new SslServerAuthenticationOptions
                         {
                             ServerCertificate = cert,
-                            ApplicationProtocols = new List<SslApplicationProtocol> { AppProtocol },
+                            ApplicationProtocols = [ AppProtocol ],
                             ClientCertificateRequired = false,
                             RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true // for testing only; do real validation in production
                         }
@@ -102,13 +190,9 @@ namespace DSFiles_Server
                 }
             };
 
-           /* await using var listener = await QuicListener.ListenAsync(listenerOptions, CancellationToken.None);
+            await using var listener = await QuicListener.ListenAsync(listenerOptions, CancellationToken.None);
             Console.WriteLine($"Listening QUIC on {listenEndPoint}...");
-            
-            _ = Task.Run(() => QuicServer.AcceptLoopAsync(listener, default));*/
-
-
-
+            _ = Task.Run(() => QuicServer.AcceptLoopAsync(listener, default));
 
          
 
@@ -222,11 +306,19 @@ namespace DSFiles_Server
                 await DSFilesRemoveHandle.HandleFile(ctx.Request, ctx.Response);
             });
 
+      
+
 
             //Chunks upload system
             app.MapPost("/cuh", async (HttpContext ctx) =>
             {
                 await DSFilesChunkedUploadHandle.HandleHandshake(ctx.Request, ctx.Response);
+            });
+
+            app.MapMethods("/cuc", ["OPTIONS"], async (HttpContext ctx, string seed) =>
+            {
+                ctx.Response.StatusCode = StatusCodes.Status200OK;
+                await ctx.Response.WriteAsync("OK");
             });
 
             app.MapPost("/cuc", async (HttpContext ctx) =>
