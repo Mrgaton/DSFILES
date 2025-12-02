@@ -12,11 +12,14 @@ namespace DSFiles_Server
 {
     internal static class JWTManager
     {
-        private static string? SignKey = Environment.GetEnvironmentVariable("SIGNKEY") ?? null;
+        private static string? SignKey = 
+            Environment.GetEnvironmentVariable("SIGNKEY") ?? null;
 
-        private static string? EncryptKey = Environment.GetEnvironmentVariable("ENCRYPTKEY") ?? null;
+        private static string? EncryptKey =
+            Environment.GetEnvironmentVariable("ENCRYPTKEY") ?? null;
 
-        public static bool JWTEnabled = !string.IsNullOrEmpty(SignKey) && !string.IsNullOrEmpty(EncryptKey);
+        public static bool JWTEnabled { get => 
+                !string.IsNullOrEmpty(SignKey) && !string.IsNullOrEmpty(EncryptKey); }
         public static string CreateSecureToken(object myJsonData)
         {
             var handler = new JwtSecurityTokenHandler();
