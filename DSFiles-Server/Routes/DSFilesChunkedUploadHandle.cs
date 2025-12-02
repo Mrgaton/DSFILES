@@ -194,7 +194,8 @@ namespace DSFiles_Server.Routes
                                 ref webHook
                             );
 
-                            await res.WriteAsync(uploaded.Json);
+
+                            await res.WriteAsync(JWTManager.JWTEnabled ? JWTManager.CreateSecureToken(uploaded.Json) : uploaded.Json);
                             Sessions.TryRemove(sessionGuid, out _);
                             return;
                         }

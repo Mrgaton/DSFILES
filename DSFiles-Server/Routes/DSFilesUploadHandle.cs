@@ -3,6 +3,7 @@ using DSFiles_Shared;
 using Microsoft.AspNetCore.Http;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using static DSFiles_Shared.DiscordFilesSpliter;
 
 namespace DSFiles_Server.Routes
 {
@@ -55,7 +56,7 @@ namespace DSFiles_Server.Routes
                             disposeIdsWritter: false
                         );
 
-                        await res.WriteAsync(result.Json);
+                        await res.WriteAsync(JWTManager.JWTEnabled ? JWTManager.CreateSecureToken(result.Json) : result.Json);
                         await res.Body.FlushAsync();
                     }
                     catch (Exception ex)

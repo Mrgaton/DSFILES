@@ -44,72 +44,7 @@ namespace DSFiles_Server
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher
         };
-        private const string SignKey = "JLKSAJDLKJSO^DIH)UD)?KJBPXLKJSGPUYWFDLUTCCTOET/DTC";
-
-        private const string EncryptKey = "12345678901234567890123456789012";
-        public static string CreateSecureToken(object myJsonData)
-        {
-            var handler = new JwtSecurityTokenHandler();
-
-            string jsonString = JsonSerializer.Serialize(myJsonData);
-
-            var signKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SignKey));
-            var encKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(EncryptKey));
-
-            var descriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(new[]
-                {
-                    new Claim("Content", jsonString)
-                }),
-
-                Expires = DateTime.UtcNow.AddHours(1),
-
-                SigningCredentials = new SigningCredentials(
-                    signKey,
-                    SecurityAlgorithms.HmacSha256Signature),
-
-                EncryptingCredentials = new EncryptingCredentials(
-                    encKey,
-                    SecurityAlgorithms.Aes256KW,
-                    SecurityAlgorithms.Aes256CbcHmacSha512)
-            };
-
-            return handler.WriteToken(handler.CreateToken(descriptor));
-        }
-
-        public static string? ProcessReturnedToken(string token)
-        {
-            var handler = new JwtSecurityTokenHandler();
-
-            var signKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SignKey));
-            var encKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(EncryptKey));
-
-            try
-            {
-                var validationParams = new TokenValidationParameters
-                {
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = signKey,
-
-                    TokenDecryptionKey = encKey,
-
-                    ValidateLifetime = true
-                };
-
-                var principal = handler.ValidateToken(token, validationParams, out _);
-
-                return principal.FindFirst("Content")?.Value;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed: {ex.Message}");
-                return null;
-            }
-        }
+    
         private static async Task Main(string[] args)
         {
             /*var e = CreateSecureToken("edsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasdedsadasdasmsdafasdfasd");
