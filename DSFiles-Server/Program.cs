@@ -53,6 +53,9 @@ namespace DSFiles_Server
             var d = ProcessReturnedToken(e);
             Console.WriteLine(d);*/
 
+            // Set this before initializing QuicListener
+            Environment.SetEnvironmentVariable("QUIC_GOAL_THROUGHPUT", "1");
+
             if (File.Exists(".env"))
             {
                 foreach (var line in File.ReadAllLines(".env").Select(l => l.Trim()))
@@ -83,6 +86,7 @@ namespace DSFiles_Server
                 File.WriteAllBytes(passwordPath, passBytes);
             }
 
+
             var envPass = Convert.ToBase64String(SHA512.HashData(File.ReadAllBytes(passwordPath)));
 
             CertManager manager = new(new() { CertPassword = envPass });
@@ -103,11 +107,9 @@ namespace DSFiles_Server
                     {
                         DefaultStreamErrorCode = 0x0A,
                         DefaultCloseErrorCode = 0x0B,
-
-
-
-                        MaxInboundBidirectionalStreams = 20,
-                        MaxInboundUnidirectionalStreams = 5,
+                        
+                        MaxInboundBidirectionalStreams = 4,
+                        MaxInboundUnidirectionalStreams = 0,
                         KeepAliveInterval = TimeSpan.FromSeconds(15),
 
                         IdleTimeout = TimeSpan.FromMinutes(20),
@@ -118,7 +120,14 @@ namespace DSFiles_Server
                             ApplicationProtocols = [ AppProtocol ],
                             ClientCertificateRequired = false,
                             RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true // for testing only; do real validation in production
-                        }
+                        },
+
+                        InitialReceiveWindowSizes = new QuicReceiveWindowSizes
+                        {
+                            Connection = 64 * 1024 * 1024, // 64 MB
+                            RemotelyInitiatedBidirectionalStream = 64 * 1024 * 1024, // 16 MB
+                            LocallyInitiatedBidirectionalStream = 64 * 1024 * 1024 // 16 MB
+                        },
                     };
 
 
@@ -146,6 +155,7 @@ namespace DSFiles_Server
 
             builder.WebHost.ConfigureKestrel((context, options) =>
             {
+                options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = 100 * 1024 * 1024;
                 options.Limits.MaxRequestLineSize = ushort.MaxValue;
                 options.Limits.MaxRequestHeadersTotalSize = ushort.MaxValue;
@@ -215,14 +225,14 @@ namespace DSFiles_Server
             });
 
             //Main endpoints
-            app.MapGet("/d/{**seed}", async (HttpContext ctx, string seed) =>
+            app.MapGet("/d/{**seed}", async static (HttpContext ctx, string seed) =>
             {
-                await DSFilesDownloadHandle.HandleFile(ctx.Request, ctx.Response);
+                await DSFilesDownloadHandle.HandleFile(ctx.Request, ctx.Response, ctx.RequestAborted);
             });
 
             app.MapPost("/d", async (HttpContext ctx) =>
             {
-                await DSFilesUploadHandle.HandleFile(ctx.Request, ctx.Response);
+                await DSFilesUploadHandle.HandleFile(ctx.Request, ctx.Response, ctx.RequestAborted);
             });
 
             app.MapDelete("/d/{**seed}", async (HttpContext ctx, string seed) =>
@@ -265,19 +275,19 @@ namespace DSFiles_Server
             //Pato.exe my beloved
             app.MapGet("/download", async (HttpContext ctx) =>
             {
-                await SpeedTest.HandleDownload(ctx.Request, ctx.Response);
+                await SpeedTest.HandleDownload(ctx.Request, ctx.Response, ctx.RequestAborted);
             });
 
             //IDk what is this shit
             app.MapGet("/upload", async (HttpContext ctx) =>
             {
-                await SpeedTest.HandleUpload(ctx.Request, ctx.Response);
+                await SpeedTest.HandleUpload(ctx.Request, ctx.Response, ctx.RequestAborted);
             });
 
             //Amazing console animation
             app.MapGet("/animate", async (HttpContext ctx) =>
             {
-                await ConsoleAnimation.HandleAnimation(ctx.Request, ctx.Response);
+                await ConsoleAnimation.HandleAnimation(ctx.Request, ctx.Response, ctx.RequestAborted);
             });
 
             app.MapGet("/favicon.ico", async (HttpContext ctx) =>

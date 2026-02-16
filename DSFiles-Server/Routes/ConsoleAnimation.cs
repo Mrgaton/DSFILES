@@ -62,7 +62,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
 ");
         }
 
-        public static async Task HandleAnimation(HttpRequest req, HttpResponse res)
+        public static async Task HandleAnimation(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             if (req.Headers.TryGetValue("accept", out var accept) && ((string)accept).Contains("html", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -117,34 +117,52 @@ mccn | compression = the amount of rgb value that have to change to change the c
 
             (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result), res.Body);
 
-            while (true)
+            try
             {
-                for (int i = 0; i < rawFrames.Length; i++)
+                while (!token.IsCancellationRequested)
                 {
-                    var data = rawFrames[i];
-
-					res.Body.Write(data, 0, data.Length);
-
-                    if (rawFrames.Length == 1)
+                    for (int i = 0; i < rawFrames.Length; i++)
                     {
-                        while (true)
+                        var data = rawFrames[i];
+
+                        await res.Body.WriteAsync(data, 0, data.Length, token);
+
+                        if (rawFrames.Length == 1)
                         {
-							res.Body.Write(AnsiHelper.SetPosition(0, 0));
+                            while (!token.IsCancellationRequested)
+                            {
+                                res.Body.Write(AnsiHelper.SetPosition(0, 0));
 
-                            Thread.Sleep(5 * 1000);
+                                Thread.Sleep(5 * 1000);
+                            }
                         }
+
+                        if (frameDuration.Count() > 0)
+                        {
+                            int timeToSleep = (int)(frameDuration[i] - sw.ElapsedMilliseconds) + timeOffset;
+
+                            if (timeToSleep > 0)
+                            {
+                                Thread.Sleep(Math.Abs(timeToSleep));
+                                Console.WriteLine("Sleeping " + timeToSleep);
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+
+                        sw.Restart();
                     }
-
-                    int timeToSleep = (int)(frameDuration[i] - sw.ElapsedMilliseconds) + timeOffset;
-
-                    if (timeToSleep > 0)
-                    {
-                        Thread.Sleep(Math.Abs(timeToSleep));
-                        Console.WriteLine("Sleeping " + timeToSleep);
-                    }
-
-                    sw.Restart();
                 }
+            }
+            catch (OperationCanceledException)
+            {
+
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.ToString());
             }
         }
 
@@ -168,7 +186,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
 
                     sb.Append(AnsiHelper.ClearScreen);
                     sb.Append(AnsiHelper.SetTitle("Wait while we compile the gif"));
-                    sb.Append(AnsiHelper.SetSize(transformedHeight + 2, transformedWidth + 1));
+                    sb.Append(AnsiHelper.SetSize(transformedWidth + 1, transformedHeight + 2));
                     sb.Append(AnsiHelper.HideCursor);
 
                     sb.Append(AnsiHelper.SetTitle(config.Name + ' ' + transformedWidth + 'x' + (info.Height / (config.HeightDivisor / 2))));

@@ -9,7 +9,7 @@ namespace DSFiles_Server.Routes
 {
     internal static class DSFilesUploadHandle
     {
-        public static async Task HandleFile(HttpRequest req, HttpResponse res)
+        public static async Task HandleFile(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             req.Headers.TryGetValue("webhook", out var webHook);
 

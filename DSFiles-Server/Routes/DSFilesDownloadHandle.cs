@@ -65,7 +65,7 @@ namespace DSFiles_Server.Routes
 
         // private const long CHUNK_SIZE = 25 * 1024 * 1024 - 256;
 
-        public static async Task HandleFile(HttpRequest req, HttpResponse res)
+        public static async Task HandleFile(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             try
             {
@@ -217,7 +217,7 @@ namespace DSFiles_Server.Routes
                     res.StatusCode = 206;
                     res.BodyWriter.Write([]);
 
-                    await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset);
+                    await SendFullFile(res, key, attachments.Skip(chunk).ToArray(), chunk, offset, token);
                     return;
                 }
 
@@ -227,7 +227,7 @@ namespace DSFiles_Server.Routes
 
                 //Thread.Sleep(200);
 
-                await SendFullFile(res, key, attachments, 0);
+                await SendFullFile(res, key, attachments, 0, 0, token);
             }
             catch (Exception ex)
             {
@@ -253,14 +253,14 @@ namespace DSFiles_Server.Routes
 
         public const int MaxRetries = 3;
 
-        private static async Task SendFullFile(HttpResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0)
+        private static async Task SendFullFile(HttpResponse res, byte[]? key, string[] attachments, int startChunk, int offset = 0, CancellationToken token = default)
         {
             int part = 0;
             var stream = res.BodyWriter.AsStream();
 
             using (AesCTRStream ts = new AesCTRStream(stream, key))
             {
-                while (part < attachments.Length)
+                while (part < attachments.Length && !token.IsCancellationRequested)
                 {
                     try
                     {
@@ -268,6 +268,9 @@ namespace DSFiles_Server.Routes
 
                         for (int e = part; e < part + RefreshUrlsChunkSize && e < attachments.Length; e++)
                         {
+                            if (token.IsCancellationRequested)
+                                break;
+
                             string url = refreshedUrls[e - part];
 
                             if (!stream.CanWrite)
@@ -304,15 +307,15 @@ namespace DSFiles_Server.Routes
                                         ts.Position = (startChunk + e + part) * CHUNK_SIZE;
                                     }
 
-                                    using (var dataStream = await response.Content.ReadAsStreamAsync())
+                                    using (var dataStream = await response.Content.ReadAsStreamAsync(token))
                                     {
                                         byte[] buffer = new byte[81920];
 
                                         int bytesRead;
 
-                                        while ((bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                                        while (!token.IsCancellationRequested && (bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                                         {
-                                            await ts.WriteAsync(buffer, 0, bytesRead);
+                                            await stream.WriteAsync(buffer, 0, bytesRead, token);
 
                                             /*if (offset < CHUNK_SIZE)
                                                 offset += bytesRead;*/

@@ -10,7 +10,7 @@ namespace DSFiles_Server.Routes
 
         private static byte[] RandomBuffer = null;
 
-        public static async Task HandleDownload(HttpRequest req, HttpResponse res)
+        public static async Task HandleDownload(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             if (RandomBuffer == null)
             {
@@ -24,26 +24,28 @@ namespace DSFiles_Server.Routes
             res.Headers["Content-Disposition"] = ("attachment; filename=pato.exe");
             res.ContentType = "application/octet-stream";
             res.ContentLength = long.MaxValue;
-            await res.Body.WriteAsync(Header);
+
+            await res.Body.WriteAsync(Header, token);
 
             while (true)
             {
-                await res.Body.WriteAsync(RandomBuffer);
+                await res.Body.WriteAsync(RandomBuffer, token);
             }
         }
 
-        public static async Task HandleUpload(HttpRequest req, HttpResponse res)
+        public static async Task HandleUpload(HttpRequest req, HttpResponse res, CancellationToken token)
         {
-            byte[] buffer = new byte[8 * 1024 * 1024];
+            byte[] buffer = new byte[2 * 1024 * 1024];
 
             int bytesRead = int.MaxValue;
 
             while (bytesRead > 0)
             {
-                bytesRead = await req.Body.ReadAsync(buffer, 0, buffer.Length);
+                bytesRead = await req.Body.ReadAsync(buffer, 0, buffer.Length, token);
             }
 
             res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
+
             await res.SendStatus(200);
         }
     }

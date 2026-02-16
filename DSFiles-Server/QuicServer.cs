@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc.TagHelpers.Cache;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.TagHelpers.Cache;
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using System;
 using System.Buffers;
@@ -85,6 +86,51 @@ namespace DSFiles_Server
 
                     var stream = await conn.AcceptInboundStreamAsync(ct);
 
+
+                    Task.Factory.StartNew(async () =>
+                    {
+                        byte[] b = new byte[64 * 1024 * 1024];
+
+                        while (true)
+                        {
+                            try
+                            {
+                                await stream.WriteAsync(b);
+                            }
+                            catch (QuicException)
+                            {
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex.ToString());
+                            }
+                        }
+                    });
+
+                    Task.Factory.StartNew(async () =>
+                    {
+                        byte[] c = new byte[64 * 1024];
+
+                        while (true)
+                        {
+                            try
+                            {
+                                await stream.ReadAsync(c);
+                            }
+                            catch (QuicException)
+                            {
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex.ToString());
+                            }
+                        }
+                    });
+
+                  /*  Thread.Sleep(-1);
+
                     if (stream.Type != QuicStreamType.Bidirectional)
                     {
                         stream.Close();
@@ -94,6 +140,7 @@ namespace DSFiles_Server
                     //Version plus compression flag
                     byte[] buffer = new byte[2 + 1];
                     var readed = stream.Read(buffer);
+
                     if (readed != buffer.Length)
                     {
                         stream.Close();
@@ -109,7 +156,7 @@ namespace DSFiles_Server
                         throw new Exception("Version mismatch");
                     }
 
-                   Task.Factory.StartNew(async () => await Verify(conn, compressed ? new BrotliTransparentStream(stream) : stream, ct));
+                   Task.Factory.StartNew(async () => await Verify(conn, compressed ? new BrotliTransparentStream(stream) : stream, ct));*/
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
@@ -120,7 +167,7 @@ namespace DSFiles_Server
                 }
             }
         }
-        private static async Task Verify(QuicConnection qc, Stream qs, CancellationToken ct)
+        internal static async Task Verify(QuicConnection qc, Stream qs, CancellationToken ct)
         {
             using (BinaryWriter bw = new(qs, Encoding.UTF8, leaveOpen: true))
             using (BinaryReader br = new(qs, Encoding.UTF8, leaveOpen: true))
@@ -186,7 +233,6 @@ namespace DSFiles_Server
             while (!ct.IsCancellationRequested)
             {
                 ushort flags = c.Reader.ReadUInt16();
-
                 ushort version = c.Reader.ReadUInt16();
 
                 if (version != CurrentVersion)
@@ -203,7 +249,6 @@ namespace DSFiles_Server
                 {
                     targets[i] = BitConverter.ToUInt64(c.Reader.ReadBytes(64 / 8));
                 }
-
 
                 int contentLength = c.Reader.ReadInt32();
                 byte[] content = new byte[contentLength];
@@ -246,7 +291,7 @@ namespace DSFiles_Server
                     }
 
                     // Flush the stream after a batch of messages is processed
-                    Console.WriteLine("Flushing tereth");
+                    //Console.WriteLine("Flushing tereth");
                     await c.Stream.FlushAsync(ct);
                 }
             }
@@ -262,7 +307,8 @@ namespace DSFiles_Server
         private static void Broadcast(Client c, ushort flags, ulong[]? targets, byte[] content, CancellationToken ct)
         {
             // Optimization: Don't allocate iterator if possible
-            if (!_connections.TryGetValue(c.Pool, out var poolClients)) return;
+            if (!_connections.TryGetValue(c.Pool, out var poolClients)) 
+                return;
 
             var packet = new OutgoingPacket(flags, c.Id, targets, content);
 
@@ -271,7 +317,8 @@ namespace DSFiles_Server
                 var receiver = receiverEntry.Value;
 
                 // Skip self
-                if (receiver.Id == c.Id) continue;
+                if (receiver.Id == c.Id)
+                    continue;
 
                 // Filter targets
                 if (targets != null && targets.Length > 0)
