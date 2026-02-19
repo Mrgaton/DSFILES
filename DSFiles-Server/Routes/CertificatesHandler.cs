@@ -13,7 +13,7 @@ namespace DSFiles_Server.Routes
     {
         public static ConcurrentDictionary<string, (DateTime notAfter, string json)> CertsCache = new();
 
-        public static X509Certificate2 GetCertificate(string domain, int port = 443, int retries = 4, int delayMilliseconds = 1250)
+        public static async Task<X509Certificate2> GetCertificate(string domain, int port = 443, int retries = 4, int delayMilliseconds = 1250)
         {
             if (string.IsNullOrWhiteSpace(domain))
             {
@@ -27,9 +27,12 @@ namespace DSFiles_Server.Routes
                 try
                 {
                     using (var client = new TcpClient(domain, port))
-                    using (var sslStream = new SslStream(client.GetStream(), false, (sender, certificate, chain, sslPolicyErrors) => true))
                     {
-                        sslStream.AuthenticateAsClient(domain);
+                        await client.ConnectAsync(domain, port);
+
+                        using var sslStream = new SslStream(client.GetStream(), false, (sender, certificate, chain, sslPolicyErrors) => new X509Certificate2(certificate).Verify());
+
+                        await sslStream.AuthenticateAsClientAsync(domain);
 
                         X509Certificate remoteCertificate = sslStream.RemoteCertificate;
 
@@ -52,8 +55,6 @@ namespace DSFiles_Server.Routes
                         Console.WriteLine("Max retry attempts reached. Unable to fetch the certificate.");
                         throw;
                     }
-
-                    Thread.Sleep(delayMilliseconds);
                 }
             }
 
@@ -70,10 +71,19 @@ namespace DSFiles_Server.Routes
                 string[] urlSplited = req.Path.ToString().Split('/');
                 string domain = urlSplited.LastOrDefault();
 
-                if (domain == null)
+                if (domain == null || string.IsNullOrWhiteSpace(domain))
                 {
                     res.StatusCode = 400;
                     await res.WriteAsync("Domain not specified.");
+                    return;
+                }
+
+                domain = domain.ToLower();
+
+                if (Uri.CheckHostName(domain) != UriHostNameType.Dns || domain.Contains("localhost"))
+                {
+                    res.StatusCode = 400;
+                    await res.WriteAsync("Invalid domain or internal address not allowed.");
                     return;
                 }
 
@@ -86,7 +96,7 @@ namespace DSFiles_Server.Routes
                     return;
                 }
 
-                X509Certificate2 cert2 = GetCertificate(domain);
+                X509Certificate2 cert2 = await GetCertificate(domain);
 
                 var obj = new
                 {

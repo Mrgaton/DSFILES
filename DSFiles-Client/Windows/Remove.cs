@@ -17,7 +17,7 @@ namespace DSFiles_Client.CGuis
             {
                 if (string.IsNullOrWhiteSpace(seedTextField.Text) || seedTextField.Text.Length < 6)
                 {
-                    MessageBox.ErrorQuery("Seed is empty", "Please provide a valid seed/token", "ok");
+                    MessageBox.ErrorQuery(App!, "Seed is empty", "Please provide a valid seed/token", "ok");
                     return;
                 }
 
@@ -31,7 +31,7 @@ namespace DSFiles_Client.CGuis
                     {
                         Application.Invoke(() =>
                         {
-                            MessageBox.ErrorQuery("DSFiles Manager", "The seed may be not a remove token", "ok");
+                            MessageBox.ErrorQuery(App!, "DSFiles Manager", "The seed may be not a remove token", "ok");
                         });
 
                         return;

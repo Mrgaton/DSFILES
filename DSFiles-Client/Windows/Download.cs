@@ -31,7 +31,16 @@ namespace DSFiles_Client.CGuis
                 byte[] seed = seedSplited[0].FromBase64Url();
                 byte[]? key = seedSplited.Length > 1 ? seedSplited[1].FromBase64Url() : null;
 
-                string destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().BrotliDecompress()) + (fileDataSplited.Length > 2 && !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null);
+                string destFileName = string.Empty;
+
+                if (fileDataSplited.Length > 1)
+                {
+                    destFileName = Encoding.UTF8.GetString(fileDataSplited[0].FromBase64Url().Inflate()) +
+                    (
+                        fileDataSplited.Length > 2 &&
+                        !string.IsNullOrEmpty(fileDataSplited.Skip(1).First()) ? '.' + fileDataSplited.Skip(1).First() : null
+                    );
+                }
 
                 System.Windows.Forms.SaveFileDialog sfd = new System.Windows.Forms.SaveFileDialog()
                 {
@@ -43,7 +52,7 @@ namespace DSFiles_Client.CGuis
 
                 if (sfd.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 {
-                    MessageBox.ErrorQuery("DSFiles Manager", "Operation cancelled", "ok", "retry");
+                    MessageBox.ErrorQuery(App!, "DSFiles Manager", "Operation cancelled", "ok", "retry");
                     return;
                 }
 

@@ -55,7 +55,6 @@ namespace DSFiles_Client.CGuis
 
                 Enabled = true,
                 Visible = true,
-                AllowsMultipleSelection = true,
                 
                 Source = new ListWrapper<string>(logs)
             };
@@ -64,7 +63,6 @@ namespace DSFiles_Client.CGuis
             {
                 Normal = new Terminal.Gui.Drawing.Attribute(Color.White,StandardColor.Black)
             });
-
 
             //logsView.SetScheme(ColorSchemes.Main);
 

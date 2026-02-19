@@ -33,35 +33,320 @@ namespace DSFiles_Server.Routes
             public int BytesPerPixel { get; set; }
             public int RowBytes { get; set; }
 
-            public ConversorConfig()
-            { }
+       }
+
+        private static async void HandleInformation(HttpRequest req, HttpResponse res)
+		{
+			
+			string html= @"<html lang=""en"">
+	<head>
+		<meta charset=""UTF-8"" />
+		<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+		<title>Console Animation Builder</title>*
+		<style>
+			body {
+				font-family: 'Segoe UI', sans-serif;
+				background: #1e1e1e;
+				color: #d4d4d4;
+				max-width: 800px;
+				margin: 0 auto;
+				padding: 20px;
+			}
+			h2 {
+				border-bottom: 1px solid #3c3c3c;
+				padding-bottom: 10px;
+				color: #569cd6;
+			}
+			.form-group {
+				margin-bottom: 15px;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+			}
+			label {
+				width: 200px;
+				font-weight: 600;
+				color: #9cdcfe;
+			}
+			input[type='text'],
+			input[type='number'] {
+				padding: 8px;
+				border-radius: 4px;
+				border: 1px solid #3c3c3c;
+				background: #252526;
+				color: #ce9178;
+				width: 100%;
+				max-width: 400px;
+				font-family: 'Consolas', monospace;
+			}
+			input:focus {
+				outline: 1px solid #0078d4;
+			}
+			input[type='checkbox'] {
+				transform: scale(1.5);
+				margin-right: 10px;
+				cursor: pointer;
+			}
+			.desc {
+				font-size: 0.8em;
+				color: #6a9955;
+				margin-left: 10px;
+				display: block;
+				margin-top: 4px;
+			}
+			.options-container {
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+			.output-area {
+				background: #000;
+				padding: 20px;
+				border-radius: 5px;
+				border: 1px solid #333;
+				margin-top: 30px;
+			}
+			code {
+				color: #b5cea8;
+				font-family: 'Consolas', monospace;
+				word-break: break-all;
+				font-size: 0.9em;
+			}
+			button {
+				background: #0e639c;
+				color: white;
+				border: none;
+				padding: 10px 20px;
+				cursor: pointer;
+				border-radius: 4px;
+				margin-top: 15px;
+				font-weight: bold;
+			}
+			button:hover {
+				background: #1177bb;
+			}
+		</style>
+	</head>
+	<body>
+		<h2>Console Animation Generator</h2>
+
+		<div class=""form-group"">
+			<div>
+				<label>Media URL</label>
+				<span class=""desc"">The GIF or Image URL</span>
+			</div>
+			<input
+				type=""text""
+				id=""url""
+				placeholder=""https://exmple.com/animation.gif""
+				oninput=""saveAndGen()""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<div>
+				<label>Width Divisor</label>
+				<span class=""desc"">Horizontal Divisor Multiplier</span>
+			</div>
+			<!-- Regex removes anything that is not a digit -->
+			<input
+				type=""number""
+				id=""wd""
+				min=""1""
+				value=""1""
+				oninput=""
+					this.value = this.value.replace(/[^0-9]/g, '');
+					saveAndGen();
+				""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<div>
+				<label>Height Divisor</label>
+				<span class=""desc"">Vertical Divisor Multiplier</span>
+			</div>
+			<input
+				type=""number""
+				id=""hd""
+				min=""1""
+				value=""1""
+				oninput=""
+					this.value = this.value.replace(/[^0-9]/g, '');
+					saveAndGen();
+				""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<div>
+				<label>Compression</label>
+				<span class=""desc"">Min RGB val change threshold</span>
+			</div>
+			<input
+				type=""number""
+				id=""mccn""
+				min=""0""
+				max=""765""
+				value=""10""
+				oninput=""
+					this.value = this.value.replace(/[^0-9]/g, '');
+					saveAndGen();
+				""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<div>
+				<label>FPS Divisor</label>
+				<span class=""desc"">Divide frames per second</span>
+			</div>
+			<input
+				type=""number""
+				id=""fps""
+				min=""1""
+				placeholder=""Default""
+				oninput=""
+					this.value = this.value.replace(/[^0-9]/g, '');
+					saveAndGen();
+				""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<div>
+				<label>Offset (ms)</label>
+				<span class=""desc"">Timing offset (Negatives allowed)</span>
+			</div>
+			<!-- Regex allows digits and the minus sign -->
+			<input
+				type=""number""
+				id=""offset""
+				placeholder=""e.g. 30 or -60""
+				oninput=""
+					this.value = this.value.replace(/[^0-9-]/g, '');
+					saveAndGen();
+				""
+			/>
+		</div>
+
+		<div class=""form-group"">
+			<label>Other Options</label>
+			<div class=""options-container"">
+				<div>
+					<input
+						type=""checkbox""
+						id=""pixel""
+						checked
+						onchange=""saveAndGen()""
+					/>
+					Pixel Mode (Paint block)
+				</div>
+				<div>
+					<input type=""checkbox"" id=""hdr"" onchange=""saveAndGen()"" />
+					HDR (Maximize RGB colors)
+				</div>
+				<div>
+					<input type=""checkbox"" id=""i"" onchange=""saveAndGen()"" />
+					Invert Colors
+				</div>
+			</div>
+		</div>
+
+		<div class=""output-area"">
+			<div style=""color: #ccc; margin-bottom: 10px"">
+				<strong>Generated Command:</strong>
+			</div>
+			<code id=""cmd"">...</code>
+			<br />
+			<button onclick=""copyCmd()"">Copy cURL</button>
+		</div>
+
+		<script>
+			const textInputs = ['url', 'wd', 'hd', 'mccn', 'fps', 'offset'];
+			const checkInputs = ['pixel', 'hdr', 'i'];
+
+			function loadSettings() {
+				textInputs.forEach((id) => {
+					const val = localStorage.getItem('anim_' + id);
+					if (val !== null) document.getElementById(id).value = val;
+				});
+
+				checkInputs.forEach((id) => {
+					const val = localStorage.getItem('anim_' + id);
+					if (val !== null)
+						document.getElementById(id).checked = val === 'true';
+				});
+
+				gen();
+			}
+
+			function saveAndGen() {
+				textInputs.forEach((id) => {
+					localStorage.setItem(
+						'anim_' + id,
+						document.getElementById(id).value
+					);
+				});
+
+				checkInputs.forEach((id) => {
+					localStorage.setItem(
+						'anim_' + id,
+						document.getElementById(id).checked
+					);
+				});
+
+				gen();
+			}
+
+			function gen() {
+				const baseUrl = 'https://df.gato.ovh/animate';
+
+				let params = new URLSearchParams();
+
+				const getVal = (id) => document.getElementById(id).value;
+				const getCheck = (id) => document.getElementById(id).checked;
+
+				if (getVal('wd')) params.append('wd', getVal('wd'));
+				if (getVal('hd')) params.append('hd', getVal('hd'));
+
+				params.append('hdr', getCheck('hdr'));
+				params.append('pixel', getCheck('pixel'));
+
+				if (getCheck('i')) params.append('i', 'true');
+
+				if (getVal('mccn')) params.append('mccn', getVal('mccn'));
+				if (getVal('fps')) params.append('fps', getVal('fps'));
+				if (getVal('offset')) params.append('offset', getVal('offset'));
+
+				if (getVal('url')) params.append('url', getVal('url'));
+
+				const finalUrl = `${baseUrl}?${params.toString()}`;
+
+				const curlCmd = `curl ""${finalUrl}"" -v -k`;
+
+				document.getElementById('cmd').innerText = curlCmd;
+			}
+
+			function copyCmd() {
+				const text = document.getElementById('cmd').innerText;
+				navigator.clipboard.writeText(text).then(() => {
+					const btn = document.querySelector('button');
+					const originalText = btn.innerText;
+					btn.innerText = 'Copied!';
+					setTimeout(() => (btn.innerText = originalText), 1500);
+				});
+			}
+
+			// Initialize
+			loadSettings();
+		</script>
+	</body>
+</html>
+";
+
+            await res.WriteAsync(html);
         }
-
-        private static async Task HandleInformation(HttpRequest req, HttpResponse res)
-        {
-            await res.WriteAsync(@"Information of ConsoleAnimation endpoint query params:
-
-link | url = the url of the media you want to convert to ascii
-
-offset | o = the offset on wich the frames of the animated image is transmited in ms (example 30 or -60)
-
-i = inverts the colors?
-
-hdr = Some weird algorithm to maximize color
-
-pixel = instead of characters just paints the whole char
-
-fps = the amount of fps to divide
-
-wd = (width divisor) the amount of pixels in the width row that skips to give a smaller charmap to the console
-
-hd = (height divisor) the amount of pixels in the height row that skips to give a smaller charmap to the console
-
-mccn | compression = the amount of rgb value that have to change to change the color for the next pixel for the console
-
-");
-        }
-
         public static async Task HandleAnimation(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             if (req.Headers.TryGetValue("accept", out var accept) && ((string)accept).Contains("html", StringComparison.InvariantCultureIgnoreCase))
@@ -74,7 +359,6 @@ mccn | compression = the amount of rgb value that have to change to change the c
             res.ContentType = "text/plain";
 
             //res.ContentLength64 = long.MaxValue;
-
 
             string gifName = "Gif";
 
@@ -133,7 +417,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
                             {
                                 res.Body.Write(AnsiHelper.SetPosition(0, 0));
 
-                                Thread.Sleep(5 * 1000);
+                                await Task.Delay(5 * 1000);
                             }
                         }
 
@@ -143,7 +427,7 @@ mccn | compression = the amount of rgb value that have to change to change the c
 
                             if (timeToSleep > 0)
                             {
-                                Thread.Sleep(Math.Abs(timeToSleep));
+                                await Task.Delay(Math.Abs(timeToSleep));
                                 Console.WriteLine("Sleeping " + timeToSleep);
                             }
                         }

@@ -5,7 +5,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <LangVersion>preview</LangVersion>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0-windows7.0</TargetFramework>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
     <ImplicitUsings>disabled</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
@@ -33,7 +33,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Terminal.Gui" Version="2.0.0-prealpha.1985" />
+    <PackageReference Include="Terminal.Gui" Version="2.0.0-develop.5027" />
   </ItemGroup>
 
   <ItemGroup>

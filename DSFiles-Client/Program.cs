@@ -14,6 +14,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
+using Terminal.Gui.App;
 using static AnsiHelper;
 using Application = Terminal.Gui.App.Application;
 using Clipboard = System.Windows.Forms.Clipboard;
@@ -1552,22 +1553,34 @@ namespace DSFiles_Client
 
             //DiscordFilesSpliter.Decode("AB8AxLihWC8OAmEBjAxyrQ4pIhhGUG8iGSpQACIVIFCCIhQJINUiBaUgeA", "claro2.msi").GetAwaiter().GetResult();
 
-            AnsiHelper.InitConsle();
 
             if (args.Length == 0)
             {
-                Application.Init();
+                //Application.Init();
+
+                IApplication app = Application.Create().Init();
 
                 try
                 {
+
                     //Console.OutputEncoding = Encoding.UTF8;
-                    Application.Run(new Main());
+
+                    app.Run<Main>();
+
+                    //Application.Run(new Main());
                 }
                 finally
                 {
-                    Application.Shutdown();
+                    app.Dispose();
+
+                   // Application.Shutdown();
                 }
+
+                return;
             }
+
+
+            AnsiHelper.InitConsle();
 
             if (!File.Exists(WebHookFileName))
             {
@@ -1666,7 +1679,7 @@ namespace DSFiles_Client
             ClipClipboard.SetText(result.WebLink);
 
             Console.WriteLine(AnsiColors.BrightCyan + "WebLink" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.WebLink + '\n');
-            Console.Write(AnsiColors.BrightBlue + "FileSeed" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.SeedString);
+            Console.Write(AnsiColors.BrightBlue + "FileSeed" + AnsiColors.DarkGray + ": " + AnsiColors.Silver + result.DownloadToken);
             Console.ReadLine();
             Environment.Exit(0);
 

@@ -272,12 +272,6 @@ namespace DSFiles_Server.Routes
                                 break;
 
                             string url = refreshedUrls[e - part];
-
-                            if (!stream.CanWrite)
-                            {
-                                throw new IOException("Client disconnected.");
-                            }
-
                             string id = CleanUrl(refreshedUrls[e - part]);
 
                             Console.WriteLine("Downloading id " + id + ' ' + ((startChunk + e) + 1) + "/" + attachments.Length + (offset != 0 ? " to offset " + id : null));
@@ -315,7 +309,7 @@ namespace DSFiles_Server.Routes
 
                                         while (!token.IsCancellationRequested && (bytesRead = await dataStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                                         {
-                                            await stream.WriteAsync(buffer, 0, bytesRead, token);
+                                            await ts.WriteAsync(buffer, 0, bytesRead, token);
 
                                             /*if (offset < CHUNK_SIZE)
                                                 offset += bytesRead;*/

@@ -31,7 +31,8 @@ namespace DSFiles_Shared
     {
         public static byte[] FromBase64(this string data) => Convert.FromBase64String(data.PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
 
-        public static byte[] FromBase64Url(this string data) => data.Replace('_', '/').Replace('-', '+').FromBase64();
+        public static byte[] FromBase64Url(this string data) => 
+            data.Replace('_', '/').Replace('-', '+').FromBase64();
 
         public static IEnumerable<string> SplitInParts(this string s, int partLength)
         {

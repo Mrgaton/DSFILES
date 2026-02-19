@@ -5,6 +5,8 @@ namespace DSFiles_Client.CGuis
 {
     public partial class Progress
     {
+        
+
         public Progress(Action action)
         {
             InitializeComponent();
