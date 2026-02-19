@@ -163,7 +163,7 @@ namespace DSFiles_Server
 
                 options.ListenAnyIP(PortNumber, listenOptions =>
                 {
-                    listenOptions.UseHttps(httpsOptions =>
+                    /*listenOptions.UseHttps(httpsOptions =>
                     {
                         httpsOptions.ServerCertificateSelector = (ctx, host) =>
                         {
@@ -171,9 +171,9 @@ namespace DSFiles_Server
                         };
 
                         httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls13;
-                    });
+                    });*/
 
-                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                 });
             });
 
