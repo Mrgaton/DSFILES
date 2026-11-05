@@ -1,0 +1,15 @@
+DSFiles-Server/bin/
+DSFiles_Shared/bin/
+DSFiles-Client/bin/
+DSFiles-Server/obj/
+DSFiles_Shared/obj/
+DSFiles-Client/obj/
+.git/
+.vs/
+.idea/
+node_modules/
+**/node_modules/
+**/.env
+**/.env.*
+**/*.pfx
+**/cert_password.bin

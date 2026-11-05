@@ -1,4 +1,4 @@
-﻿using DSFiles_Client.Helpers;
+using DSFiles_Client.Helpers;
 using DSFiles_Shared;
 using System;
 using System.Linq;
@@ -9,7 +9,7 @@ namespace DSFiles_Client.CGuis
 {
     public partial class Remove
     {
-        public Remove()
+        public Remove(IApplication app)
         {
             InitializeComponent();
 
@@ -17,7 +17,7 @@ namespace DSFiles_Client.CGuis
             {
                 if (string.IsNullOrWhiteSpace(seedTextField.Text) || seedTextField.Text.Length < 6)
                 {
-                    MessageBox.ErrorQuery(App!, "Seed is empty", "Please provide a valid seed/token", "ok");
+                    MessageBox.ErrorQuery(app!, "Seed is empty", "Please provide a valid seed/token", "ok");
                     return;
                 }
 
@@ -33,7 +33,7 @@ namespace DSFiles_Client.CGuis
                         {
                             Application.Invoke(() =>
                             {
-                                MessageBox.ErrorQuery(App!, "DSFiles Manager", "The seed may be not a remove token", "ok");
+                                MessageBox.ErrorQuery(app!, "DSFiles Manager", "The seed may be not a remove token", "ok");
                             });
 
                             return;
@@ -52,7 +52,7 @@ namespace DSFiles_Client.CGuis
                     })
                 };
 
-                App.Run(prog);
+                app.Run(prog);
             };
         }
     }

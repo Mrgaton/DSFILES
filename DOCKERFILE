@@ -1,48 +1,36 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
-COPY ./DSFiles_Shared /DSFiles_Shared
-
-
-WORKDIR /DSFiles-Server
-
-# Copy only necessary files
-COPY . ./
-
-# Restore as distinct layers
-RUN dotnet restore --no-cache
-
-# Build and publish a release, skipping restore
-RUN dotnet publish -c Release -o out --no-restore
-
-
-
-# Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
-
-
-WORKDIR /DSFiles-Server
-
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100-rc.3-resolute AS build
+WORKDIR /src
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates \
- && curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
- && dpkg -i packages-microsoft-prod.deb \
- && rm packages-microsoft-prod.deb \
+ && apt-get install -y --no-install-recommends clang zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY global.json ./
+COPY DSFiles_Shared/DSFiles_Shared.csproj DSFiles_Shared/
+COPY DSFiles-Server/DSFiles_Server.csproj DSFiles-Server/
+RUN dotnet restore DSFiles-Server/DSFiles_Server.csproj -r linux-x64 -p:NativeAot=true
+
+COPY DSFiles_Shared/ DSFiles_Shared/
+COPY DSFiles-Server/ DSFiles-Server/
+RUN dotnet publish DSFiles-Server/DSFiles_Server.csproj -c Release -r linux-x64 -o /app --no-restore \
+    -p:NativeAot=true -p:DebugType=None -p:DebugSymbols=false
+
+FROM mcr.microsoft.com/dotnet/runtime-deps:11.0.0-rc.3-resolute AS runtime
+WORKDIR /DSFiles-Server
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL https://packages.microsoft.com/config/ubuntu/26.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb \
+ && dpkg -i /tmp/packages-microsoft-prod.deb \
+ && rm /tmp/packages-microsoft-prod.deb \
  && apt-get update \
  && apt-get install -y --no-install-recommends libmsquic \
  && rm -rf /var/lib/apt/lists/*
 
+COPY --from=build /app/ ./
 
-# Copy only published output,
-COPY --from=build-env /DSFiles-Server/out .
-
-# Remove unnecessary runtimes (e.g., Windows, macOS)
-RUN rm -rf ./runtimes/win* ./runtimes/osx* ./runtimes/unix*
-
-# Set environment variables to reduce image size
 ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_EnableDiagnostics=0
-
-# Expose the port
 EXPOSE 8080
-
-ENTRYPOINT ["dotnet", "DSFiles_Server.dll"]
+EXPOSE 20022/udp
+ENTRYPOINT ["./DSFiles_Server"]

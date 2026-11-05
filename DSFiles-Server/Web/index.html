@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <meta name="color-scheme" content="dark" />
+        <meta name="referrer" content="no-referrer" />
+        <title>DS Files</title>
+        <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+        <link rel="stylesheet" href="./styles.css" />
+        <script type="module" src="./app.js"></script>
+    </head>
+    <body>
+        <header class="topbar">
+            <a class="brand" href="./">DS Files</a>
+            <div class="topbar-actions">
+                <button
+                    id="catalog-open"
+                    class="text-button"
+                    aria-haspopup="dialog"
+                    aria-controls="catalog-dialog"
+                >
+                    Google Drive
+                </button>
+                <button
+                    id="settings-open"
+                    class="destination-button"
+                    aria-haspopup="dialog"
+                    aria-controls="settings"
+                >
+                    <span id="destination-label">Settings</span>
+                    <span aria-hidden="true">⌄</span>
+                </button>
+            </div>
+        </header>
+        <main>
+            <div id="drive-warning" class="drive-warning" role="status">
+                <span>
+                    Google Drive is not connected. Your history and settings are saved locally but
+                    are not syncing.
+                </span>
+                <button id="drive-warning-connect" class="text-button">Connect Drive</button>
+            </div>
+
+            <section class="workspace" aria-label="File manager">
+                <div class="main-panel">
+                    <div class="tools-bar">
+                        <span
+                            id="encryption-warning"
+                            class="encryption-warning"
+                            role="status"
+                            hidden
+                        >
+                            <span aria-hidden="true">⚠</span>
+                            Not encrypted
+                        </span>
+                        <nav class="tabs" role="tablist" aria-label="Tools">
+                            <button
+                                id="upload-tab"
+                                role="tab"
+                                aria-selected="true"
+                                aria-controls="upload-panel"
+                            >
+                                Upload
+                            </button>
+                            <button
+                                id="files-tab"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="files-panel"
+                                tabindex="-1"
+                            >
+                                Files
+                            </button>
+                            <button
+                                id="redirect-tab"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="redirect-panel"
+                                tabindex="-1"
+                            >
+                                Links
+                            </button>
+                            <button
+                                id="animation-tab"
+                                role="tab"
+                                aria-selected="false"
+                                aria-controls="animation-panel"
+                                tabindex="-1"
+                            >
+                                Animation
+                            </button>
+                        </nav>
+                        <label
+                            id="compression-control"
+                            class="switch-option toolbar-compression"
+                            for="upload-compression"
+                            title="Automatic compression: up to 100 MB per file"
+                        >
+                            <span><strong>Compress</strong></span>
+                            <input id="upload-compression" type="checkbox" role="switch" />
+                            <span class="switch-track" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <div id="upload-panel" role="tabpanel" aria-labelledby="upload-tab">
+                        <input type="file" id="file-picker" multiple hidden />
+                        <button id="dropzone" class="dropzone">
+                            <span class="drop-arrow" aria-hidden="true">↑</span>
+                            <strong>Drop files here</strong>
+                            <span>or click to choose files</span>
+                        </button>
+
+                        <div id="queue-section" hidden>
+                            <div class="section-heading">
+                                <h2 id="queue-title">Files</h2>
+                                <div class="queue-heading-actions">
+                                    <button id="copy-upload-links" class="text-button" hidden>
+                                        Copy all links
+                                    </button>
+                                    <button id="clear" class="text-button">Clear list</button>
+                                </div>
+                            </div>
+                            <div id="upload-summary" class="upload-summary" hidden>
+                                <div class="upload-summary-heading">
+                                    <strong id="upload-overall-label"></strong>
+                                    <span id="upload-overall-percent"></span>
+                                </div>
+                                <progress
+                                    id="upload-overall-progress"
+                                    max="100"
+                                    value="0"
+                                    aria-label="Overall upload progress"
+                                ></progress>
+                                <div class="upload-summary-footer">
+                                    <span id="upload-overall-detail"></span>
+                                    <span id="upload-overall-eta"></span>
+                                    <button id="upload-cancel" class="text-button" hidden>
+                                        Cancel upload
+                                    </button>
+                                </div>
+                            </div>
+                            <ul id="queue" class="queue"></ul>
+                            <div id="zip-options">
+                                <label class="zip-option">
+                                    <input id="zip" type="checkbox" />
+                                    <span><strong>Bundle into a ZIP</strong></span>
+                                </label>
+                                <div id="zip-name-row" class="field" hidden>
+                                    <label for="zip-name">ZIP filename</label>
+                                    <input id="zip-name" value="my-files.zip" maxlength="60" />
+                                </div>
+                            </div>
+                            <div id="upload-actions" class="upload-actions">
+                                <span id="total"></span>
+                                <button id="upload" class="primary">
+                                    Upload files
+                                    <span aria-hidden="true">↗</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="activity" class="activity" hidden>
+                            <div>
+                                <span id="activity-label"></span>
+                                <span id="percent"></span>
+                            </div>
+                            <progress
+                                id="progress"
+                                max="100"
+                                value="0"
+                                aria-label="Upload progress"
+                            ></progress>
+                            <small id="activity-detail"></small>
+                        </div>
+                    </div>
+                    <section id="files-panel" role="tabpanel" aria-labelledby="files-tab" hidden>
+                        <div class="library-heading">
+                            <div>
+                                <h2>Files</h2>
+                                <p id="library-status" class="helper" role="status">
+                                    History on this browser
+                                </p>
+                            </div>
+                            <button id="library-account" class="secondary">
+                                Account and backup
+                            </button>
+                        </div>
+                        <div id="library-controls" class="library-controls">
+                            <input
+                                id="catalog-search"
+                                type="search"
+                                placeholder="Search files"
+                                aria-label="Search files"
+                            />
+                            <select id="library-sort" aria-label="Sort files">
+                                <option value="recent">Most recent</option>
+                                <option value="name">Name</option>
+                                <option value="size">Size</option>
+                            </select>
+                        </div>
+                        <div id="library-records">
+                            <ul id="catalog-list" class="queue"></ul>
+                            <p id="catalog-empty" class="helper">No files yet.</p>
+                            <nav
+                                id="library-pagination"
+                                class="library-pagination"
+                                aria-label="File pages"
+                                hidden
+                            >
+                                <button id="library-previous" class="secondary">Previous</button>
+                                <span id="library-page" role="status"></span>
+                                <button id="library-next" class="secondary">Next</button>
+                            </nav>
+                        </div>
+                        <details id="manual-download" class="manual-file">
+                            <summary>Download using a link or seed</summary>
+                            <div id="download-panel">
+                                <form id="download-form">
+                                    <label for="download-input">Link or seed</label>
+                                    <textarea
+                                        id="download-input"
+                                        rows="3"
+                                        placeholder="https://…/d/… or your seed"
+                                        required
+                                        spellcheck="false"
+                                    ></textarea>
+                                    <label for="download-name">
+                                        Filename
+                                        <span class="muted">(when using a seed)</span>
+                                    </label>
+                                    <input
+                                        id="download-name"
+                                        placeholder="file.zip"
+                                        maxlength="160"
+                                    />
+                                    <button class="primary download-button">
+                                        Download file
+                                        <span aria-hidden="true">↓</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
+                        <details id="manual-delete" class="manual-file">
+                            <summary>Delete using a token</summary>
+                            <div id="delete-panel">
+                                <p class="helper tool-intro">
+                                    Use the deletion token returned when uploading, not the download
+                                    link.
+                                </p>
+                                <form id="delete-form">
+                                    <label for="delete-token">Deletion token</label>
+                                    <textarea
+                                        id="delete-token"
+                                        rows="3"
+                                        required
+                                        maxlength="60000"
+                                        spellcheck="false"
+                                        autocomplete="off"
+                                        placeholder="Paste your deletion token here"
+                                    ></textarea>
+                                    <label class="zip-option">
+                                        <input id="delete-confirm" type="checkbox" required />
+                                        <span>
+                                            <strong>I want to delete this file or link</strong>
+                                            <small>
+                                                The link will stop working. This cannot be undone.
+                                            </small>
+                                        </span>
+                                    </label>
+                                    <button id="delete-submit" class="primary danger wide">
+                                        Delete file
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
+                    </section>
+
+                    <div
+                        id="animation-panel"
+                        role="tabpanel"
+                        aria-labelledby="animation-tab"
+                        hidden
+                    >
+                        <p class="helper tool-intro">
+                            Configure the animation and copy the command for your terminal.
+                        </p>
+                        <form id="animation-form">
+                            <label for="animation-url">Image, GIF or Tenor URL</label>
+                            <input
+                                id="animation-url"
+                                type="url"
+                                placeholder="https://…/animation.gif"
+                                required
+                            />
+                            <div class="form-grid">
+                                <div>
+                                    <label for="animation-shell">Shell</label>
+                                    <select id="animation-shell">
+                                        <option value="powershell">PowerShell · Windows</option>
+                                        <option value="bash">Bash / Zsh · Linux and macOS</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="animation-fps">Frames</label>
+                                    <select id="animation-fps">
+                                        <option value="1">All frames</option>
+                                        <option value="2">Every 2nd frame</option>
+                                        <option value="3">Every 3rd frame</option>
+                                        <option value="4">Every 4th frame</option>
+                                        <option value="8">Every 8th frame</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="animation-width">Horizontal downscaling</label>
+                                    <input
+                                        id="animation-width"
+                                        type="number"
+                                        min="1"
+                                        max="128"
+                                        value="1"
+                                    />
+                                    <small class="helper">2 = half the width.</small>
+                                </div>
+                                <div>
+                                    <label for="animation-height">Vertical downscaling</label>
+                                    <input
+                                        id="animation-height"
+                                        type="number"
+                                        min="1"
+                                        max="128"
+                                        value="1"
+                                    />
+                                    <small class="helper">
+                                        The server also adjusts the cell aspect ratio.
+                                    </small>
+                                </div>
+                                <div>
+                                    <label for="animation-offset">Timing offset (ms)</label>
+                                    <input
+                                        id="animation-offset"
+                                        type="number"
+                                        min="-1000"
+                                        max="1000"
+                                        value="-8"
+                                    />
+                                    <small class="helper">
+                                        Negative speeds up playback; positive adds a delay to each
+                                        frame.
+                                    </small>
+                                </div>
+                                <div>
+                                    <label for="animation-color">Color change threshold</label>
+                                    <input
+                                        id="animation-color"
+                                        type="range"
+                                        min="1"
+                                        max="765"
+                                        value="75"
+                                    />
+                                    <output id="animation-color-value">75</output>
+                                    <small class="helper">
+                                        Higher values mean fewer color changes and less data.
+                                    </small>
+                                </div>
+                            </div>
+                            <label class="zip-option">
+                                <input id="animation-pixel" type="checkbox" />
+                                <span>
+                                    <strong>Pixel mode</strong>
+                                    <small>Color blocks instead of characters.</small>
+                                </span>
+                            </label>
+                            <label class="zip-option">
+                                <input id="animation-hdr" type="checkbox" />
+                                <span>
+                                    <strong>Boost brightness (HDR)</strong>
+                                    <small>Enhance terminal colors.</small>
+                                </span>
+                            </label>
+                            <label class="zip-option">
+                                <input id="animation-invert" type="checkbox" />
+                                <span><strong>Invert colors</strong></span>
+                            </label>
+                            <div class="section-heading">
+                                <h2>Command</h2>
+                                <button
+                                    type="button"
+                                    id="animation-copy"
+                                    class="text-button"
+                                    disabled
+                                >
+                                    Copy command
+                                </button>
+                            </div>
+                            <pre
+                                class="command"
+                            ><code id="animation-command">Enter a URL to start.</code></pre>
+                            <p class="helper">
+                                Run the command in a terminal with ANSI color support. Press Ctrl+C
+                                to stop.
+                            </p>
+                            <button id="animation-preview" type="button" class="secondary">
+                                View original image
+                            </button>
+                            <p class="helper">
+                                The original preview does not simulate the terminal output.
+                            </p>
+                            <img
+                                id="animation-image"
+                                alt="Original animation image"
+                                referrerpolicy="no-referrer"
+                                hidden
+                            />
+                        </form>
+                    </div>
+                    <div id="redirect-panel" role="tabpanel" aria-labelledby="redirect-tab" hidden>
+                        <p class="helper tool-intro">Shorten a URL with JSPaste.</p>
+                        <p class="helper external-service-note">
+                            External service: JSPaste data may be lost or deleted. Anonymous
+                            documents can be deleted directly without the DS Files token. Keep the
+                            original URL; it is sent to JSPaste without encryption.
+                        </p>
+                        <form id="redirect-form">
+                            <label for="redirect-url">Destination URL</label>
+                            <input
+                                id="redirect-url"
+                                type="url"
+                                placeholder="https://example.com"
+                                required
+                                maxlength="8192"
+                            />
+                            <label for="redirect-name">Link name</label>
+                            <input id="redirect-name" value="my-link" maxlength="55" />
+                            <label for="redirect-lifetime">Delete the link after</label>
+                            <select id="redirect-lifetime">
+                                <option value="0">No expiration requested</option>
+                                <option value="3600">1 hour</option>
+                                <option value="86400">1 day</option>
+                                <option value="604800">7 days</option>
+                                <option value="2592000">30 days</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <div id="redirect-custom-lifetime" hidden>
+                                <label for="redirect-minutes">Minutes until deletion</label>
+                                <input
+                                    id="redirect-minutes"
+                                    type="number"
+                                    min="1"
+                                    max="525600"
+                                    step="1"
+                                    value="60"
+                                />
+                            </div>
+                            <p class="helper">
+                                DS Files schedules deletion of the short link, not the original
+                                file. The server must be running and able to reach JSPaste.
+                                Interrupted deletions are retried after it returns. JSPaste may
+                                delete the link earlier.
+                            </p>
+                            <button id="redirect-create" class="primary wide">Create link</button>
+                        </form>
+                        <section id="results-section" class="results-section" hidden>
+                            <div class="section-heading">
+                                <div><h2>Created links</h2></div>
+                                <button id="copy-all" class="secondary">Copy all</button>
+                            </div>
+                            <ul id="results" class="results"></ul>
+                            <p class="helper">
+                                Links are saved in Files. Connect Google Drive to sync them.
+                            </p>
+                        </section>
+                    </div>
+
+                    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+                </div>
+            </section>
+        </main>
+        <dialog id="settings" aria-labelledby="settings-title">
+            <form id="settings-form">
+                <div class="section-heading">
+                    <h2 id="settings-title">Settings</h2>
+                    <button
+                        type="button"
+                        id="settings-close"
+                        class="icon-button"
+                        aria-label="Close settings"
+                    >
+                        ×
+                    </button>
+                </div>
+                <label class="switch-option" for="upload-encryption">
+                    <span>
+                        <strong>Encrypt files</strong>
+                        <small id="encryption-help">
+                            Protect stored content. The key is included in the link.
+                        </small>
+                    </span>
+                    <input id="upload-encryption" type="checkbox" role="switch" checked />
+                    <span class="switch-track" aria-hidden="true"></span>
+                </label>
+                <h3 class="settings-subheading">Upload webhook</h3>
+                <p class="helper">Choose where to store files.</p>
+                <label class="radio-option">
+                    <input type="radio" name="destination" value="server" checked />
+                    <span>
+                        <strong>Use the server webhook</strong>
+                        <small>Use the webhook configured on the server.</small>
+                    </span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="destination" value="custom" />
+                    <span>
+                        <strong>Custom webhook</strong>
+                        <small>Remember the destination in this browser.</small>
+                    </span>
+                </label>
+                <div id="webhook-field" class="field" hidden>
+                    <label for="webhook">Discord webhook URL</label>
+                    <input
+                        id="webhook"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="https://discord.com/api/webhooks/…"
+                        spellcheck="false"
+                    />
+                    <p class="helper">
+                        Stored in this browser and sent to the DS Files server when uploading.
+                    </p>
+                    <button id="forget" type="button" class="text-button">
+                        Forget saved webhook
+                    </button>
+                </div>
+                <p id="settings-error" class="error" role="alert"></p>
+                <button class="primary wide">Save</button>
+            </form>
+        </dialog>
+        <dialog id="catalog-dialog" aria-labelledby="catalog-title">
+            <div class="section-heading">
+                <h2 id="catalog-title">Account and backup</h2>
+                <button id="catalog-close" class="text-button">Close</button>
+            </div>
+            <p class="helper">
+                Connect Google Drive to save your files and settings. No extra password required.
+                Catalog encryption is optional.
+            </p>
+            <div class="catalog-actions">
+                <button id="catalog-connect" class="primary">Connect Google Drive</button>
+            </div>
+            <p id="catalog-origin" class="helper"></p>
+            <p id="catalog-status" role="status"></p>
+            <form id="catalog-unlock">
+                <label for="catalog-password">Catalog password</label>
+                <input
+                    id="catalog-password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                />
+                <p class="helper">
+                    This catalog is already encrypted. Enter its existing password to recover it.
+                    You can then turn encryption off.
+                </p>
+                <button class="primary">Open catalog</button>
+            </form>
+            <div id="catalog-content" hidden>
+                <div class="catalog-actions">
+                    <button id="catalog-sync" class="secondary">Sync</button>
+                    <button id="catalog-lock" class="text-button">Lock</button>
+                </div>
+                <p class="helper">
+                    Drive stores the catalog and settings in your account. Files remain in DS Files.
+                    Connecting merges this catalog with the selected account.
+                </p>
+                <details>
+                    <summary>Catalog privacy</summary>
+                    <p id="catalog-protection" class="helper"></p>
+                    <label id="catalog-new-password-label" for="catalog-new-password">
+                        Password for optional encryption
+                    </label>
+                    <input
+                        id="catalog-new-password"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                    />
+                    <button id="catalog-encryption" class="secondary">
+                        Enable optional encryption
+                    </button>
+                </details>
+                <details>
+                    <summary>Import backup</summary>
+                    <label for="catalog-backup">Backup file</label>
+                    <input id="catalog-backup" type="file" accept=".json,application/json" />
+                    <label for="catalog-backup-password">
+                        Password (only for encrypted backups)
+                    </label>
+                    <input id="catalog-backup-password" type="password" autocomplete="off" />
+                    <button id="catalog-import" class="secondary">Import</button>
+                </details>
+            </div>
+            <div class="catalog-actions">
+                <button id="catalog-export" class="secondary">Export backup</button>
+            </div>
+        </dialog>
+    </body>
+</html>

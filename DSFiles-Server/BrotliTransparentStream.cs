@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
 using System.IO.Compression;
-using System.Text;
 
 namespace DSFiles_Server
 {
@@ -11,19 +8,14 @@ namespace DSFiles_Server
         private readonly BrotliStream _compressor;
         private readonly BrotliStream _decompressor;
 
-        /// <summary>
-        /// Initializes a new instance of the BrotliTransparentStream.
-        /// </summary>
-        /// <param name="innerStream">The underlying bidirectional stream (e.g., QUIC or TCP stream).</param>
-        /// <param name="compressionLevel">The level of compression to apply to outgoing data.</param>
         public BrotliTransparentStream(Stream innerStream, CompressionLevel compressionLevel = CompressionLevel.Fastest)
         {
-            if (innerStream == null) 
+            if (innerStream == null)
                 throw new ArgumentNullException(nameof(innerStream));
 
             _innerStream = innerStream;
 
-             _compressor = new BrotliStream(innerStream, compressionLevel, leaveOpen: true);
+            _compressor = new BrotliStream(innerStream, compressionLevel, leaveOpen: true);
 
             _decompressor = new BrotliStream(innerStream, CompressionMode.Decompress, leaveOpen: true);
         }
@@ -61,12 +53,10 @@ namespace DSFiles_Server
 
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
-            // Flush compressor first, then the underlying stream
+
             return _compressor.FlushAsync(cancellationToken)
                 .ContinueWith(_ => _innerStream.FlushAsync(cancellationToken), cancellationToken).Unwrap();
         }
-
-        // --- Read Operations (Goes through Decompressor) ---
 
         public override int Read(byte[] buffer, int offset, int count)
         {
@@ -97,7 +87,7 @@ namespace DSFiles_Server
                 {
                     _decompressor.Dispose();
                 }
-                catch { /* Ignore */ }
+                catch { }
                 _innerStream.Dispose();
             }
             base.Dispose(disposing);

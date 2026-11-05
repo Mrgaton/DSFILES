@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 public class BrokenSaveFileDialog
@@ -93,12 +93,18 @@ public class BrokenSaveFileDialog
         )
     {
         var dialog = new BrokenSaveFileDialog();
-        if (owner != default) dialog.Owner = owner;
-        if (title != null) dialog.Title = title;
-        if (filter != null) dialog.Filter = filter;
-        if (initialDirectory != null) dialog.InitialDirectory = initialDirectory;
-        if (defaultExt != null) dialog.DefaultExt = defaultExt;
-        if (initialFileName != null) dialog.FileName = initialFileName;
+        if (owner != default)
+            dialog.Owner = owner;
+        if (title != null)
+            dialog.Title = title;
+        if (filter != null)
+            dialog.Filter = filter;
+        if (initialDirectory != null)
+            dialog.InitialDirectory = initialDirectory;
+        if (defaultExt != null)
+            dialog.DefaultExt = defaultExt;
+        if (initialFileName != null)
+            dialog.FileName = initialFileName;
 
         dialog.OverwritePrompt = overwritePrompt;
         dialog.AddExtension = addExtension;
@@ -216,7 +222,7 @@ public class BrokenSaveFileDialog
             {
                 success = false;
                 int error = Marshal.GetLastWin32Error();
-                if (error != 0 && error != 1223) // 1223 (ERROR_CANCELLED)
+                if (error != 0 && error != 1223)
                 {
                     Console.WriteLine($"GetSaveFileName failed. Win32 error: 0x{error:X} ({new System.ComponentModel.Win32Exception(error).Message})");
                 }

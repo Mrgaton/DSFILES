@@ -1,16 +1,14 @@
-﻿using DSFiles_Server.Helpers;
+using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Primitives;
 using SkiaSharp;
 using System.Diagnostics;
-using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace DSFiles_Server.Routes
 {
     internal static class ConsoleAnimation
     {
+        private static readonly SemaphoreSlim ActiveAnimations = new(4);
         private static int maxBrightness = 256 * 3;
         private static int colorLessMinCharSetLengh = 1;
 
@@ -33,12 +31,12 @@ namespace DSFiles_Server.Routes
             public int BytesPerPixel { get; set; }
             public int RowBytes { get; set; }
 
-       }
+        }
 
         private static async void HandleInformation(HttpRequest req, HttpResponse res)
-		{
-			
-			string html= @"<html lang=""en"">
+        {
+
+            string html = @"<html lang=""en"">
 	<head>
 		<meta charset=""UTF-8"" />
 		<meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
@@ -349,6 +347,31 @@ namespace DSFiles_Server.Routes
         }
         public static async Task HandleAnimation(HttpRequest req, HttpResponse res, CancellationToken token)
         {
+            if (!await ActiveAnimations.WaitAsync(0, token))
+            {
+                res.StatusCode = 429;
+                return;
+            }
+            try
+            {
+                await HandleAnimationCore(req, res, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (Exception ex) when (ex is HttpRequestException or ArgumentException or InvalidDataException or FormatException or OverflowException or OperationCanceledException)
+            {
+                if (res.HasStarted)
+                {
+                    req.HttpContext.Abort();
+                    return;
+                }
+                res.StatusCode = 400;
+                await res.WriteAsync("The image URL or image is not supported, or exceeds the processing limits.", token);
+            }
+            finally { ActiveAnimations.Release(); }
+        }
+
+        private static async Task HandleAnimationCore(HttpRequest req, HttpResponse res, CancellationToken token)
+        {
             if (req.Headers.TryGetValue("accept", out var accept) && ((string)accept).Contains("html", StringComparison.InvariantCultureIgnoreCase))
             {
                 HandleInformation(req, res);
@@ -357,8 +380,6 @@ namespace DSFiles_Server.Routes
 
             res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
             res.ContentType = "text/plain";
-
-            //res.ContentLength64 = long.MaxValue;
 
             string gifName = "Gif";
 
@@ -370,13 +391,17 @@ namespace DSFiles_Server.Routes
                 return;
             }
 
-            if (url.Contains("://tenor.com", StringComparison.InvariantCultureIgnoreCase))
+            if (Uri.TryCreate(url, UriKind.Absolute, out var source) && source.IdnHost == "tenor.com")
             {
-                url = TenorResolver.Resovlve(url);
+                url = await TenorResolver.Resolve(url, token);
             }
 
+            if (string.IsNullOrEmpty(url))
+                throw new ArgumentException("Missing image URL.");
+
             var gifNameByte = Encoding.UTF8.GetBytes(url.Split('/').Last().Split('.')[0].Replace('-', ' '));
-            gifNameByte[0] = (byte)char.ToUpper((char)gifNameByte[0]);
+            if (gifNameByte.Length > 0)
+                gifNameByte[0] = (byte)char.ToUpper((char)gifNameByte[0]);
             gifName = Encoding.UTF8.GetString(gifNameByte);
 
             int timeOffset = int.Parse(req.Query["offset"].FirstOrDefault() ?? req.Query["of"].FirstOrDefault() ?? req.Query["o"].FirstOrDefault() ?? "-8");
@@ -399,7 +424,8 @@ namespace DSFiles_Server.Routes
 
             sw.Start();
 
-            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, new MemoryStream(Program.client.GetByteArrayAsync(url).Result), res.Body);
+            using var image = new MemoryStream(await PublicHttp.GetBytes(url, 16 * 1024 * 1024, token));
+            (int[] frameDuration, byte[][] rawFrames) = EncodeFrames(config, image, res.Body);
 
             try
             {
@@ -454,7 +480,14 @@ namespace DSFiles_Server.Routes
         {
             using (var codec = SKCodec.Create(stream))
             {
+                if (codec == null)
+                    throw new InvalidDataException("Invalid image.");
                 var info = codec.Info;
+                long pixels = (long)info.Width * info.Height;
+                if (info.Width <= 0 || info.Height <= 0 || pixels > 16_000_000
+                    || codec.FrameCount > 200 || pixels * Math.Max(1, codec.FrameCount) > 64_000_000
+                    || (long)Math.Max(1, info.Width / config.WidthDivisor) * Math.Max(1, info.Height / config.HeightDivisor) * Math.Max(1, codec.FrameCount / config.FpsDivisor) > 1_000_000)
+                    throw new InvalidDataException("Image exceeds processing limits.");
 
                 config.Width = info.Width;
                 config.Height = info.Height;
@@ -479,7 +512,7 @@ namespace DSFiles_Server.Routes
 
                     frameDuration = new int[codec.FrameCount];
 
-                    int frames = codec.FrameCount / config.FpsDivisor;
+                    int frames = Math.Max(1, codec.FrameCount / config.FpsDivisor);
 
                     rawFrames = new byte[frames][];
 
@@ -490,7 +523,7 @@ namespace DSFiles_Server.Routes
                         sb.Clear();
                         sb.Append(AnsiHelper.SetPosition(0, 0));
 
-                        var bitmap = new SKBitmap(info.Width, info.Height);
+                        using var bitmap = new SKBitmap(info.Width, info.Height);
                         var result = codec.GetPixels(bitmap.Info, bitmap.GetPixels(), new SKCodecOptions(i * config.FpsDivisor));
 
                         config.RowBytes = bitmap.RowBytes;
@@ -502,8 +535,6 @@ namespace DSFiles_Server.Routes
 
                             RenderFrame(ref rgbValues, ref sb, ref config);
                         }
-
-                        //Console.WriteLine(sb.ToString());
 
                         int acumulatedDelay = 0;
 
@@ -550,11 +581,13 @@ namespace DSFiles_Server.Routes
 
             for (int y = 0; y < config.Height; y += config.HeightDivisor)
             {
-                if (y > config.Height) break;
+                if (y > config.Height)
+                    break;
 
                 for (int x = 0; x < config.Width; x += config.WidthDivisor)
                 {
-                    if (x > config.Width) break;
+                    if (x > config.Width)
+                        break;
 
                     int index = y * config.RowBytes + x * config.BytesPerPixel;
 
@@ -579,12 +612,9 @@ namespace DSFiles_Server.Routes
 
                     char predictedChar = config.Pixel ? ' ' : charSet[brightness * charSet.Length / maxBrightness];
 
-                    //MaximizeBrightness(ref pixelValue.Item2, ref pixelValue.Item1, ref pixelValue.Item0);
-                    //QuantinizePixel(ref pixelValue.Item2, ref pixelValue.Item1, ref pixelValue.Item0);
-
                     int colorDiff = Math.Abs(r - lastR) + Math.Abs(g - lastG) + Math.Abs(b - lastB);
 
-                    if ((config.Pixel || brightness > blankBrightNess) && colorDiff > config.MinColorChangeNeeded || ((r + g + b == 0) && lastR + lastG + lastB > 0)) //Dont change the color if its too similar to the current one
+                    if ((config.Pixel || brightness > blankBrightNess) && colorDiff > config.MinColorChangeNeeded || ((r + g + b == 0) && lastR + lastG + lastB > 0))
                     {
                         if (config.HDR)
                         {

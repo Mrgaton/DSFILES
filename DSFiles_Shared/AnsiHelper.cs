@@ -19,8 +19,6 @@ public static class AnsiHelper
         SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
 
-    //private static string Pastel(string text, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + text;
-
     public static string SetPosition(int row, int collum) => "\u001b[" + row + ";" + collum + "H";
 
     public static string ResetColor = "\u001b[0m";
@@ -57,8 +55,6 @@ public static class AnsiHelper
     public static string SetTitle(string title) => "\u001b]0;" + title + "\a";
 
     public static string SetSize(int x, int y) => "\u001b[8;" + y + ";" + x + "t";
-
-    //private static string Pastel(string text, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + text;
 
     public static string FRGB(char? c, int r, int g, int b) => "\u001b[38;2;" + r + ";" + g + ";" + b + "m" + c;
 

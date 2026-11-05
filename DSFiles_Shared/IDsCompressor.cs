@@ -1,4 +1,4 @@
-﻿namespace DSFiles_Shared
+namespace DSFiles_Shared
 {
     public class IDsCompressor
     {
@@ -213,9 +213,11 @@
 
             public void WriteBit(int b)
             {
-                if (b != 0) _cur |= (byte)(1 << (7 - _bitPos));
+                if (b != 0)
+                    _cur |= (byte)(1 << (7 - _bitPos));
                 _bitPos++;
-                if (_bitPos == 8) FlushByte();
+                if (_bitPos == 8)
+                    FlushByte();
             }
 
             public void WriteBits(ulong v, int count)
@@ -233,7 +235,8 @@
 
             public void Flush()
             {
-                if (_bitPos > 0) FlushByte();
+                if (_bitPos > 0)
+                    FlushByte();
             }
 
             public byte[] ToArray()
@@ -267,32 +270,6 @@
             long v = (long)((uv >> 1) ^ (ulong)-(long)(uv & 1));
             return v;
         }
-
-        /*public ulong[] Decompress(byte[] compressed)
-        {
-            var results = new List<ulong>();
-            _in = new BitReader(compressed);
-
-            _prevValue = _in.ReadBits(62);
-            results.Add(_prevValue);
-
-            _prevDelta = PrecomputedTimespanDelta;
-
-            while (_in.BitsLeft >= 30)
-            {
-                long dod = ReadDod();
-
-                long delta = _prevDelta + dod;
-                ulong value = _prevValue + (ulong)delta;
-
-                results.Add(value);
-
-                _prevValue = value;
-                _prevDelta = delta;
-            }
-
-            return results.ToArray();
-        }*/
 
         public class BitReader
         {

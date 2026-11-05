@@ -1,11 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
 
    <LangVersion>preview</LangVersion>
    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>DSFiles_Server</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -13,6 +13,9 @@
     <Version>1.0.1</Version>
     <SignAssembly>False</SignAssembly>
     <StartupObject>DSFiles_Server.Program</StartupObject>
+    <PublishAot Condition="'$(NativeAot)' == 'true'">true</PublishAot>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -28,10 +31,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-	  <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="SkiaSharp" Version="3.119.2" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.2" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.16.0" />
+    <InternalsVisibleTo Include="DSFiles.NativeTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.156.0-preview.1.26512.10" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.156.0-preview.1.26512.10" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,4 +46,8 @@
 
  
 
+  <ItemGroup>
+    <None Update="Web/config.js;Web/catalog.js;Web/catalog-ui.js;Web/index.html;Web/styles.css;Web/app.js;Web/web-utils.js;Web/upload-timing.js;Web/zip.js;Web/chunk-upload.js;Web/proof-worker.js;Web/icon.svg"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

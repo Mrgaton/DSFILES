@@ -1,7 +1,5 @@
-﻿using DSFiles_Server.Helpers;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
-using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -98,18 +96,12 @@ namespace DSFiles_Server.Routes
 
                 X509Certificate2 cert2 = await GetCertificate(domain);
 
-                var obj = new
-                {
-                    PublicKey = cert2.PublicKey.EncodedKeyValue.RawData,
-                    Subject = cert2.Subject,
-                    Issuer = cert2.Issuer,
-                    Expiration = cert2.NotAfter
-                };
-
-                var json = JsonSerializer.Serialize(obj);
+                var obj = new CertificateResponse(cert2.PublicKey.EncodedKeyValue.RawData,
+                    cert2.Subject, cert2.Issuer, cert2.NotAfter);
+                var json = JsonSerializer.Serialize(obj, AppJsonContext.PreserveNames.CertificateResponse);
 
                 CertsCache.TryAdd(domain, (cert2.NotAfter, json));
-                res.Headers["Cache-Control"] = ( GetCertCacheAge(cert2.NotAfter));
+                res.Headers["Cache-Control"] = (GetCertCacheAge(cert2.NotAfter));
                 await res.WriteAsync(json);
             }
             catch (Exception ex)

@@ -49,7 +49,6 @@ namespace DSFiles_Client.CGuis
                 X = Pos.Center(),
 
 
-                ShadowStyle = ShadowStyle.None,
                 Text = "Download",
                 IsDefault = true
             };

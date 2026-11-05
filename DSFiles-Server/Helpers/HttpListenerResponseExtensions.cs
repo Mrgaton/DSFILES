@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using System.Collections.Specialized;
 using System.Text;
 
@@ -77,7 +77,6 @@ namespace DSFiles_Server.Helpers
                 res.Headers["warning"] = (Convert.ToBase64String(Encoding.UTF8.GetBytes(data)));
             }
             catch { }
-
 
             await res.WriteAsync(data);
         }

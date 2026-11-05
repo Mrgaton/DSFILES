@@ -1,15 +1,30 @@
-﻿using DSFiles_Server.Helpers;
+using DSFiles_Server.Helpers;
 using DSFiles_Shared;
 using Microsoft.AspNetCore.Http;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using static DSFiles_Shared.DiscordFilesSpliter;
 
 namespace DSFiles_Server.Routes
 {
     internal static class DSFilesUploadHandle
     {
+        private static readonly SemaphoreSlim ActiveUploads = new(4);
+
         public static async Task HandleFile(HttpRequest req, HttpResponse res, CancellationToken token)
+        {
+            if (!await ActiveUploads.WaitAsync(0, token))
+            {
+                res.StatusCode = 429;
+                return;
+            }
+            try
+            {
+                await HandleFileCore(req, res, token);
+            }
+            finally { ActiveUploads.Release(); }
+        }
+
+        private static async Task HandleFileCore(HttpRequest req, HttpResponse res, CancellationToken token)
         {
             req.Headers.TryGetValue("webhook", out var webHook);
 
@@ -20,9 +35,43 @@ namespace DSFiles_Server.Routes
 
             req.Headers.TryGetValue("filename", out var fileName);
 
+            if (!WebhookAddress.IsValid(webHook.ToString()))
+            {
+                res.StatusCode = 400;
+                await res.WriteAsync("A valid HTTPS Discord webhook is required.", token);
+                return;
+            }
+
+            try
+            {
+                UploadReceipt.EnsureWebhookKeys(webHook.ToString());
+            }
+            catch (InvalidOperationException)
+            {
+                res.StatusCode = 503;
+                await res.WriteAsync("The server webhook requires valid SIGNKEY and ENCRYPTKEY configuration.", token);
+                return;
+            }
+
             if (webHook.Count <= 0 || fileName.Count <= 0 || string.IsNullOrWhiteSpace(webHook))
             {
                 res.SendStatus(400, "Webhook or FileName header is missing");
+                return;
+            }
+
+            bool encrypt = true;
+            if (req.Headers.TryGetValue("encrypt", out var encryptValue) && !bool.TryParse(encryptValue, out encrypt))
+            {
+                res.StatusCode = StatusCodes.Status400BadRequest;
+                await res.WriteAsync("encrypt must be true or false.");
+                return;
+            }
+
+            bool? proof = UploadProof.Consume(req, req.ContentLength ?? -1);
+            if (proof == false)
+            {
+                res.StatusCode = StatusCodes.Status403Forbidden;
+                await res.WriteAsync("Upload proof is invalid or expired.");
                 return;
             }
 
@@ -44,19 +93,22 @@ namespace DSFiles_Server.Routes
                     try
                     {
                         byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
-                        CompressionLevel compLevel = !compress? CompressionLevel.NoCompression : DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.SmallestSize : CompressionLevel.NoCompression;
+                        CompressionLevel compLevel = !compress ? CompressionLevel.NoCompression : DiscordFilesSpliter.IsCompresable(Path.GetExtension(fileName), httpStream.Length) ? CompressionLevel.SmallestSize : CompressionLevel.NoCompression;
 
-                        var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.client, webHook),
+                        var result = await DiscordFilesSpliter.EncodeCore(new WebHookHelper(Program.uploadClient, webHook),
                             name: fileName,
                             stream: httpStream,
                             level: compLevel,
                             onTheFlyCompression: compress && compLevel != CompressionLevel.NoCompression,
                             encodeKey: key,
+                            encrypt: encrypt,
                             tempIdsWriter: tempIds,
-                            disposeIdsWritter: false
+                            disposeIdsWritter: false,
+                            persistSeed: false
                         );
 
-                        await res.WriteAsync(JWTManager.JWTEnabled ? JWTManager.CreateSecureToken(result.Json) : result.Json);
+                        string receipt = UploadReceipt.Json(result);
+                        await res.WriteAsync(JWTManager.JWTEnabled && proof != true ? JWTManager.CreateSecureToken(receipt) : receipt);
                         await res.Body.FlushAsync();
                     }
                     catch (Exception ex)
@@ -110,11 +162,9 @@ namespace DSFiles_Server.Routes
                 throw new NotSupportedException("Synchronous Read is not supported. Use ReadAsync instead.");
             }
 
-            // Async read forwarding
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
                 => _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
 
-            // If you're on .NET Standard 2.1 / .NET Core 3.0+:
             public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
                 => _innerStream.ReadAsync(buffer, cancellationToken);
 
@@ -126,7 +176,8 @@ namespace DSFiles_Server.Routes
 
             protected override void Dispose(bool disposing)
             {
-                if (disposing) _innerStream.Dispose();
+                if (disposing)
+                    _innerStream.Dispose();
                 base.Dispose(disposing);
             }
 

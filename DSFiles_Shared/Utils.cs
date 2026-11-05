@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -19,9 +19,11 @@ namespace DSFiles_Shared
                 span.Duration().Minutes > 0 ? string.Format("{0:0}m{1}, ", span.Minutes, span.Minutes == 1 ? string.Empty : string.Empty) : string.Empty,
                 span.Duration().Seconds > 0 ? string.Format("{0:0}s{1}", span.Seconds, span.Seconds == 1 ? string.Empty : string.Empty) : string.Empty);
 
-            if (formatted.EndsWith(", ")) formatted = formatted.Substring(0, formatted.Length - 2);
+            if (formatted.EndsWith(", "))
+                formatted = formatted.Substring(0, formatted.Length - 2);
 
-            if (string.IsNullOrEmpty(formatted)) formatted = "0 s";
+            if (string.IsNullOrEmpty(formatted))
+                formatted = "0 s";
 
             return formatted;
         }
@@ -31,7 +33,7 @@ namespace DSFiles_Shared
     {
         public static byte[] FromBase64(this string data) => Convert.FromBase64String(data.PadRight(data.Length + (4 - data.Length % 4) % 4, '='));
 
-        public static byte[] FromBase64Url(this string data) => 
+        public static byte[] FromBase64Url(this string data) =>
             data.Replace('_', '/').Replace('-', '+').FromBase64();
 
         public static IEnumerable<string> SplitInParts(this string s, int partLength)
@@ -52,8 +54,6 @@ namespace DSFiles_Shared
 
         public static string ToBase64Url(this byte[] data) => data.ToBase64().Replace('+', '-').Replace('/', '_');
 
-        //private static byte[] SmallestSizeCompressHeader = [0x00, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00];
-
         public static byte[] BrotliCompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
         {
             using (MemoryStream output = new MemoryStream())
@@ -72,7 +72,7 @@ namespace DSFiles_Shared
 
         public static byte[] Hash(this byte[] data) => hash.ComputeHash(data);
 
-        public static byte[] BrotliDecompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize)
+        public static byte[] BrotliDecompress(this byte[] data, CompressionLevel level = CompressionLevel.SmallestSize, int maximumOutputBytes = int.MaxValue)
         {
             using (MemoryStream input = new MemoryStream(data))
             {
@@ -80,7 +80,7 @@ namespace DSFiles_Shared
                 {
                     using (BrotliStream dstream = new BrotliStream(input, CompressionMode.Decompress))
                     {
-                        dstream.CopyTo(output);
+                        CopyLimited(dstream, output, maximumOutputBytes);
                         dstream.Flush();
                     }
 
@@ -105,20 +105,31 @@ namespace DSFiles_Shared
             }
         }
 
-        public static byte[] Inflate(this byte[] data)
+        public static byte[] Inflate(this byte[] data, int maximumOutputBytes = int.MaxValue)
         {
-            using (MemoryStream input = new MemoryStream(data, 0, data.Length)) //+ CompressHeader.Length))
+            using (MemoryStream input = new MemoryStream(data, 0, data.Length))
             {
                 using (MemoryStream output = new MemoryStream())
                 {
                     using (DeflateStream dstream = new DeflateStream(input, CompressionMode.Decompress))
                     {
-                        dstream.CopyTo(output);
+                        CopyLimited(dstream, output, maximumOutputBytes);
                         dstream.Flush();
                     }
 
                     return output.ToArray();
                 }
+            }
+        }
+        private static void CopyLimited(Stream input, MemoryStream output, int limit)
+        {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.Read(buffer)) != 0)
+            {
+                if (output.Length + count > limit)
+                    throw new InvalidDataException("Decompressed data exceeds the limit.");
+                output.Write(buffer, 0, count);
             }
         }
     }
@@ -129,13 +140,14 @@ namespace DSFiles_Shared
         {
             input.Write(Encoding.UTF8.GetBytes(line + '\n'));
 
-            if (flush) input.Flush();
+            if (flush)
+                input.Flush();
         }
 
         public static void Write(this Stream input, byte[] data)
         {
             input.Write(data, 0, data.Length);
-            //Console.WriteLine("Writen" + data.Length);
+
         }
 
         public static byte[] ReadAmout(this Stream input, long length)
@@ -176,7 +188,8 @@ namespace DSFiles_Shared
             byte[] buffer = new byte[8];
             input.Read(buffer, 0, buffer.Length);
 
-            if (invert) Array.Reverse(buffer);
+            if (invert)
+                Array.Reverse(buffer);
 
             return BitConverter.ToUInt64(buffer, 0);
         }

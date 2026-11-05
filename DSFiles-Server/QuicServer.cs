@@ -1,17 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.TagHelpers.Cache;
-using Microsoft.AspNetCore.Razor.TagHelpers;
-using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Net.Quic;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Channels;
 
 namespace DSFiles_Server
@@ -19,6 +10,7 @@ namespace DSFiles_Server
     internal class QuicServer
     {
         private const ushort CurrentVersion = 50002;
+        internal const int MaxPayloadLength = 1024 * 1024;
         private const int MaxQueuedPacketsPerClient = 128;
         private const int SoftQueuedPacketsPerClient = 48;
         private const int HardQueuedPacketsPerClient = 96;
@@ -135,7 +127,7 @@ namespace DSFiles_Server
             }
         }
 
-        private sealed class SharedPayload
+        internal sealed class SharedPayload
         {
             private byte[]? _buffer;
             private int _referenceCount = 1;
@@ -172,25 +164,19 @@ namespace DSFiles_Server
 
         internal readonly struct OutgoingPacket
         {
-            readonly ushort Flags;
-            readonly ulong SenderId;
-            readonly ulong[]? Targets;
-            readonly SharedPayload Payload;
-            readonly int QueuedBytes;
+            internal readonly ushort Flags;
+            internal readonly ulong SenderId;
+            internal readonly ulong[]? Targets;
+            internal readonly SharedPayload Payload;
+            internal readonly int QueuedBytes;
 
-            OutgoingPacket(ushort flags, ulong senderId, ulong[]? targets, SharedPayload payload)
+            internal OutgoingPacket(ushort flags, ulong senderId, ulong[]? targets, SharedPayload payload)
             {
                 Flags = flags;
                 SenderId = senderId;
                 Targets = targets;
                 Payload = payload;
-                QueuedBytes =
-                    sizeof(ushort) +   // flags
-                    sizeof(ulong) +    // sender id
-                    sizeof(byte) +     // target count
-                    ((targets?.Length ?? 0) * sizeof(ulong)) +
-                    sizeof(int) +      // content length
-                    payload.Length;
+                QueuedBytes = OutboundFrameHeaderSize + ((targets?.Length ?? 0) * sizeof(ulong)) + payload.Length;
             }
         }
 
@@ -202,51 +188,7 @@ namespace DSFiles_Server
                 {
                     var conn = await listener.AcceptConnectionAsync(ct);
                     Console.WriteLine($"Accepted {conn.RemoteEndPoint}");
-
-                    /*var pingStream = await conn.AcceptInboundStreamAsync(ct);
-
-                    Task.Factory.StartNew(() =>
-                    {
-                        try
-                        {
-                            int i = 0;
-
-                            while (true)
-                            {
-                                pingStream.WriteByte((byte)(i++ % 255));
-                                Thread.Sleep(2000);
-                                pingStream.ReadByte();
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.Error.WriteLine(ex.ToString());
-                        }
-                    });*/
-
-                    var stream = await conn.AcceptInboundStreamAsync(ct);
-
-
-                    if (stream.Type != QuicStreamType.Bidirectional)
-                    {
-                        stream.Close();
-                        continue;
-                    }
-
-                    //Version plus compression flag
-                    byte[] buffer = new byte[2 + 1];
-                    await ReadAtLeastAsync(stream, buffer, buffer.Length, ct);
-
-                    ushort version = BinaryPrimitives.ReadUInt16LittleEndian(buffer.AsSpan(0, sizeof(ushort)));
-                    bool compressed = BitConverter.ToBoolean(buffer, 2);
-
-                    if (version != CurrentVersion)
-                    {
-                        stream.Close();
-                        throw new Exception("Version mismatch");
-                    }
-
-                    _ = Task.Run(() => Verify(conn, compressed ? new BrotliTransparentStream(stream) : stream, ct), ct);
+                    _ = HandleConnectionAsync(conn, ct);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
@@ -255,6 +197,39 @@ namespace DSFiles_Server
 
                     await Task.Delay(1000, ct);
                 }
+            }
+        }
+
+        private static async Task HandleConnectionAsync(QuicConnection connection, CancellationToken ct)
+        {
+            try
+            {
+                await using (connection)
+                {
+                    await using var stream = await connection.AcceptInboundStreamAsync(ct);
+                    if (stream.Type != QuicStreamType.Bidirectional)
+                        return;
+
+                    byte[] header = new byte[3];
+                    await stream.ReadExactlyAsync(header, ct);
+                    if (BinaryPrimitives.ReadUInt16LittleEndian(header) != CurrentVersion)
+                        throw new InvalidDataException("QUIC protocol version mismatch.");
+
+                    if (header[2] != 0)
+                    {
+                        await using var compressed = new BrotliTransparentStream(stream);
+                        await Verify(connection, compressed, ct);
+                    }
+                    else
+                    {
+                        await Verify(connection, stream, ct);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Connection handler error: {ex.Message}");
             }
         }
         internal static async Task Verify(QuicConnection qc, Stream qs, CancellationToken ct)
@@ -281,7 +256,7 @@ namespace DSFiles_Server
 
                     await ReadAtLeastAsync(qs, handshakeBuffer, 4, ct);
                     int contentLength = BinaryPrimitives.ReadInt32LittleEndian(handshakeBuffer.AsSpan(0, 4));
-                    if (contentLength < 0)
+                    if (contentLength < 0 || contentLength > MaxPayloadLength)
                         throw new InvalidDataException("Invalid handshake metadata length.");
 
                     await SkipBytesAsync(qs, contentLength, skipBuffer, ct);
@@ -297,23 +272,28 @@ namespace DSFiles_Server
                 };
 
                 var poolConnections = _connections.GetOrAdd(pool, _ => []);
-                poolConnections.TryAdd(id, c);
+                if (!poolConnections.TryAdd(id, c))
+                    throw new InvalidOperationException("Client ID already in use.");
 
-                var writeTask = WriteLoop(c, ct);
+                using var connectionStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var writeTask = WriteLoop(c, connectionStop.Token);
 
                 try
                 {
-                    await ReadLoop(c, ct);
+                    await ReadLoop(c, connectionStop.Token);
                 }
                 finally
                 {
                     c.SendQueue.Writer.TryComplete();
+                    connectionStop.Cancel();
 
                     await writeTask;
 
 
                     if (_connections.TryGetValue(pool, out var dict))
-                        dict.TryRemove(id, out _);
+                    {
+                        ((ICollection<KeyValuePair<ulong, Client>>)dict).Remove(new KeyValuePair<ulong, Client>(id, c));
+                    }
                 }
             }
             finally
@@ -324,7 +304,7 @@ namespace DSFiles_Server
         }
 
         private static async Task ReadLoop(Client c, CancellationToken ct)
-        {  
+        {
             while (!ct.IsCancellationRequested)
             {
                 await ReadAtLeastAsync(c.Stream, c.InboundHeaderBuffer, InboundFrameHeaderSize, ct);
@@ -333,8 +313,8 @@ namespace DSFiles_Server
                 byte targetsAmount = c.InboundHeaderBuffer[sizeof(ushort)];
                 int contentLength = BinaryPrimitives.ReadInt32LittleEndian(c.InboundHeaderBuffer.AsSpan(sizeof(ushort) + sizeof(byte), sizeof(int)));
 
-                if (contentLength < 0)
-                    throw new InvalidDataException("Invalid frame size.");
+                if (contentLength < 0 || contentLength > MaxPayloadLength)
+                    throw new InvalidDataException("QUIC message exceeds the payload limit.");
 
                 ulong[]? targets = null;
                 if (targetsAmount > 0)
@@ -417,11 +397,20 @@ namespace DSFiles_Server
                 Console.WriteLine($"Write error for {c.Id}: {ex.Message}");
                 ScheduleDisconnect(c, "write failure");
             }
+            finally
+            {
+                c.SendQueue.Writer.TryComplete();
+                while (c.SendQueue.Reader.TryRead(out var pending))
+                {
+                    c.ReleaseQueueSpace(pending.QueuedBytes);
+                    pending.Payload.Release();
+                }
+            }
         }
 
         private static async Task BroadcastAsync(Client c, ushort flags, ulong[]? targets, SharedPayload payload, CancellationToken ct)
         {
-            if (!_connections.TryGetValue(c.Pool, out var poolClients)) 
+            if (!_connections.TryGetValue(c.Pool, out var poolClients))
             {
                 payload.Release();
                 return;
@@ -550,7 +539,7 @@ namespace DSFiles_Server
             Console.WriteLine($"Disconnecting slow client {client.Id} from pool {client.Pool}: {reason}");
 
             if (_connections.TryGetValue(client.Pool, out var poolClients))
-                poolClients.TryRemove(client.Id, out _);
+                ((ICollection<KeyValuePair<ulong, Client>>)poolClients).Remove(new KeyValuePair<ulong, Client>(client.Id, client));
 
             client.SendQueue.Writer.TryComplete();
             client.SignalQueueChange();
@@ -570,48 +559,6 @@ namespace DSFiles_Server
                 catch { }
             });
         }
-
-
-        /*private static async Task Broadcast(Client c, ushort flags, ulong[]? targets, byte[] content, CancellationToken ct)
-        {
-            Console.WriteLine("Sending from " + c.Id + " in " + c.Pool + " size " + content.Length);
-            //Parallel.ForEach(_connections[c.Pool], async (s) =>
-
-            foreach(var s in _connections[c.Pool])
-            {
-                try
-                {
-                    if (s.Value.Id == c.Id || (targets.Length > 0 && !targets.Contains(s.Value.Id)))
-                        continue;
-
-                    //Console.WriteLine("Sending to " + s.Key);
-
-                    s.Value.Writer.Write(flags);
-                    s.Value.Writer.Write(CurrentVersion);
-
-                    s.Value.Writer.Write(c.Id);
-
-                    s.Value.Writer.Write((byte)targets.Length);
-
-                    foreach (var t in targets)
-                    {
-                        s.Value.Writer.Write(t);
-                    }
-
-                    s.Value.Writer.Write(content.Length);
-                    s.Value.Writer.Flush();
-
-                    await s.Value.Stream.WriteAsync(content);
-                    await s.Value.Stream.FlushAsync();
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(ex.ToString());
-
-                    _connections[c.Pool].Remove(s.Key, out var _);
-                }
-            }
-        }*/
 
         private static async Task<int> ReadAtLeastAsync(Stream s, byte[] buffer, int len, CancellationToken ct)
         {
@@ -649,4 +596,4 @@ namespace DSFiles_Server
             }
         }
     }
-} 
+}

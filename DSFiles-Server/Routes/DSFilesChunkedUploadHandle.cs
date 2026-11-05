@@ -1,210 +1,248 @@
-﻿using DSFiles_Server.Helpers;
+using DSFiles_Server.Helpers;
 using DSFiles_Shared;
 using Microsoft.AspNetCore.Http;
-using System.Collections.Concurrent;
+using System.Net;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using static DSFiles_Server.Routes.DSFilesUploadHandle;
 using static DSFiles_Shared.DiscordFilesSpliter;
 
 namespace DSFiles_Server.Routes
 {
     internal static class DSFilesChunkedUploadHandle
     {
-        private static ConcurrentDictionary<Guid, UploadSession> Sessions = new();
+        private const int MaximumChunks = 10000;
+        private const int MaximumManifestBytes = 8 * 1024 * 1024;
+        private static readonly SemaphoreSlim ActiveRequests = new(8);
 
-        static DSFilesChunkedUploadHandle()
+        public static Task HandleHandshake(HttpRequest req, HttpResponse res) => Run(req, res, async () =>
         {
-            Task.Factory.StartNew(() =>
+            if (!WebhookAddress.IsValid(req.Headers["webhook"].FirstOrDefault() ?? Environment.GetEnvironmentVariable("WEBHOOK")))
             {
-                while (true)
+                res.StatusCode = 400;
+                await res.WriteAsync("A valid HTTPS Discord webhook is required.");
+                return;
+            }
+            if (req.Headers["Upload-Protocol"] != "2")
+            {
+                res.StatusCode = 426;
+                await res.WriteAsync("Chunk uploads require Upload-Protocol: 2. Update the client.");
+                return;
+            }
+            try
+            {
+                JWTManager.EnsureDeletionKeys();
+            }
+            catch (InvalidOperationException)
+            {
+                res.StatusCode = 503;
+                await res.WriteAsync("Chunk uploads require valid SIGNKEY and ENCRYPTKEY configuration.");
+                return;
+            }
+            string name = req.Headers["filename"].ToString();
+            if (name.Length is < 1 or > 64 || !long.TryParse(req.Headers["filesize"], out long size) || size <= 0)
+            {
+                res.StatusCode = 400;
+                return;
+            }
+            if (size > (long)CHUNK_SIZE * MaximumChunks)
+            {
+                res.StatusCode = 413;
+                return;
+            }
+            bool encrypt = true;
+            if (req.Headers.TryGetValue("encrypt", out var value) && !bool.TryParse(value, out encrypt))
+            {
+                res.StatusCode = 400;
+                return;
+            }
+            if (UploadProof.Consume(req, size) == false)
+            {
+                res.StatusCode = 403;
+                return;
+            }
+            string url = req.Headers["webhook"].FirstOrDefault() ?? Environment.GetEnvironmentVariable("WEBHOOK")!;
+            var hook = await WebHookHelper.CreateAsync(Program.uploadClient, url, req.HttpContext.RequestAborted);
+            var expires = DateTimeOffset.UtcNow.AddHours(24);
+            var session = new ChunkSession(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), name, size,
+                encrypt ? RandomNumberGenerator.GetBytes(32) : null, url, hook.id, hook.token!, hook.channelId, expires.ToUnixTimeSeconds());
+            res.Headers["Session-ID"] = JWTManager.CreateUploadSession(JsonSerializer.Serialize(session, AppJsonContext.Default.ChunkSession), expires);
+            res.Headers["ChunkSize"] = CHUNK_SIZE.ToString();
+            res.Headers["Upload-Protocol"] = "2";
+            await res.WriteAsync("Upload authorized.", req.HttpContext.RequestAborted);
+        });
+
+        public static Task HandleChunk(HttpRequest req, HttpResponse res) => Run(req, res, async () =>
+        {
+            var session = ReadSession(req);
+            if (!int.TryParse(req.Headers["chunk"], out int index) || index < 1 || index > Count(session))
+            {
+                res.StatusCode = 400;
+                return;
+            }
+            long size = ChunkLength(session, index);
+            if (req.ContentLength != size)
+            {
+                res.StatusCode = 422;
+                return;
+            }
+            byte[] content = new byte[(int)size];
+            await req.Body.ReadExactlyAsync(content, req.HttpContext.RequestAborted);
+            using (var aes = new AesCTRStream(null, session.Key))
+            {
+                aes.Position = (long)(index - 1) * CHUNK_SIZE;
+                aes.Encode(content, content.Length);
+            }
+            var hook = Hook(session);
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(content), "0", EncodeAttachementName(session.ChannelId, index - 1, Count(session)));
+            string response = await hook.PostFileToWebhook(form, req.HttpContext.RequestAborted);
+            var json = JsonNode.Parse(response);
+            if (!ulong.TryParse(json?["attachments"]?[0]?["id"]?.ToString(), out ulong attachment)
+                || !ulong.TryParse(json?["id"]?.ToString(), out ulong message) || attachment == 0 || message == 0)
+                throw new HttpRequestException("Discord did not confirm the attachment.");
+            var receipt = new ChunkReceipt(session.UploadId, index, attachment, message, size);
+            string signed = JWTManager.CreateChunkReceipt(JsonSerializer.Serialize(receipt, AppJsonContext.Default.ChunkReceipt),
+                DateTimeOffset.FromUnixTimeSeconds(session.ExpiresAt));
+            await res.WriteAsJsonAsync(new ChunkResponse(signed), AppJsonContext.Default.ChunkResponse, cancellationToken: req.HttpContext.RequestAborted);
+        }, uploading: true);
+
+        public static Task HandleFinalize(HttpRequest req, HttpResponse res) => Run(req, res, async () =>
+        {
+            var session = ReadSession(req);
+            var receipts = await ReadManifest(req, session, complete: true);
+            using var seed = new MemoryStream();
+            using var writer = new BinaryWriter(seed);
+            writer.Write(new ByteConfig { Compression = false, VersionNumber = ByteConfig.ClassVersion }.ToByte());
+            writer.Write(session.FileSize);
+            writer.Write(session.ChannelId);
+            writer.Write(new GorillaTimestampCompressor().Compress(receipts.Select(r => r.AttachmentId).ToArray()));
+            var hook = Hook(session);
+            // Finalization can be repeated on any replica without posting another Discord message.
+            var upload = new Upload(session.FileName, seed.ToArray().Deflate(), session.Key,
+                new GorillaTimestampCompressor().Compress(receipts.Select(r => r.MessageId).ToArray()), ref hook, postLog: false);
+            res.ContentType = "application/json";
+            await res.WriteAsync(UploadReceipt.Json(upload, protectCredential: true), req.HttpContext.RequestAborted);
+        });
+
+        public static Task HandleAbort(HttpRequest req, HttpResponse res) => Run(req, res, async () =>
+        {
+            var session = ReadSession(req);
+            var receipts = await ReadManifest(req, session, complete: false);
+            int removed = 0;
+            foreach (var receipt in receipts)
+            {
+                for (int attempt = 0; ; attempt++)
                 {
-                    try
+                    using var request = new HttpRequestMessage(HttpMethod.Delete,
+                        $"https://discord.com/api/webhooks/{session.WebhookId}/{session.WebhookToken}/messages/{receipt.MessageId}");
+                    using var response = await Program.uploadClient.SendAsync(request, req.HttpContext.RequestAborted);
+                    if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
                     {
-                        foreach (var session in Sessions.ToArray())
-                        {
-                            if ((DateTime.UtcNow - session.Value.LastUploaded).TotalSeconds > 20)
-                            {
-                                Task.Factory.StartNew(() => session.Value.WebHook.RemoveMessages(session.Value.MessagesIDs));
-
-                                Sessions.TryRemove(session.Key, out _);
-                            }
-                        }
+                        removed++;
+                        break;
                     }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine(ex.ToString());
-                    }
-
-                    Thread.Sleep(20000);
+                    if (response.StatusCode != HttpStatusCode.TooManyRequests || attempt >= 3)
+                        response.EnsureSuccessStatusCode();
+                    double seconds = response.Headers.RetryAfter?.Delta?.TotalSeconds ?? 1;
+                    if (!double.IsFinite(seconds) || seconds < 0 || seconds > 300)
+                        throw new HttpRequestException("Invalid retry delay.");
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), req.HttpContext.RequestAborted);
                 }
-            });
+            }
+            await res.WriteAsJsonAsync(new RemovalResponse(removed, receipts.Length), AppJsonContext.Default.RemovalResponse, cancellationToken: req.HttpContext.RequestAborted);
+        });
+
+        private static ChunkSession ReadSession(HttpRequest req)
+        {
+            string token = req.Headers["Session-ID"].ToString();
+            if (token.Length is < 1 or > 8192)
+                throw new CryptographicException();
+            var session = JsonSerializer.Deserialize(JWTManager.ReadUploadSession(token), AppJsonContext.Default.ChunkSession)
+                ?? throw new CryptographicException();
+            if (session.FileSize <= 0 || session.FileSize > (long)CHUNK_SIZE * MaximumChunks
+                || session.UploadId is not { Length: 32 } || session.FileName is not { Length: > 0 and <= 64 }
+                || (session.Key != null && session.Key.Length != 32) || session.ExpiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                throw new CryptographicException();
+            return session;
         }
 
-        public class UploadSession
+        private static async Task<ChunkReceipt[]> ReadManifest(HttpRequest req, ChunkSession session, bool complete)
         {
-            public WebHookHelper WebHook { get; set; }
-            public string FileName { get; set; }
-            public long FileSize { get; set; }
-            public long TotalWritted { get; set; }
-            public DateTime LastUploaded { get; set; }
-            public int TotalChunks { get; set; }
-            public int ChunkNum { get; set; }
-            public byte[] Key { get; set; }
-            public AesCTRStream AesStream { get; set; }
-            public ulong[] AttachementsIDs { get; set; }
-            public ulong[] MessagesIDs { get; set; }
+            if (req.ContentLength > MaximumManifestBytes)
+                throw new ManifestTooLargeException();
+            using var buffer = new MemoryStream();
+            byte[] block = new byte[8192];
+            int count;
+            while ((count = await req.Body.ReadAsync(block, req.HttpContext.RequestAborted)) > 0)
+            {
+                if (buffer.Length + count > MaximumManifestBytes)
+                    throw new ManifestTooLargeException();
+                buffer.Write(block, 0, count);
+            }
+            var manifest = JsonSerializer.Deserialize(buffer.ToArray(), AppJsonContext.Default.ChunkManifest);
+            if (manifest?.Receipts == null || manifest.Receipts.Length > Count(session)
+                || (complete && manifest.Receipts.Length != Count(session)))
+                throw new InvalidDataException();
+            var receipts = new SortedDictionary<int, ChunkReceipt>();
+            var attachments = new HashSet<ulong>();
+            var messages = new HashSet<ulong>();
+            foreach (var token in manifest.Receipts)
+            {
+                if (token == null)
+                    throw new InvalidDataException();
+                var receipt = JsonSerializer.Deserialize(JWTManager.ReadChunkReceipt(token), AppJsonContext.Default.ChunkReceipt)
+                    ?? throw new InvalidDataException();
+                if (receipt.UploadId != session.UploadId || receipt.Index < 1 || receipt.Index > Count(session)
+                    || receipt.Size != ChunkLength(session, receipt.Index) || receipt.AttachmentId == 0 || receipt.MessageId == 0
+                    || !receipts.TryAdd(receipt.Index, receipt) || !attachments.Add(receipt.AttachmentId) || !messages.Add(receipt.MessageId))
+                    throw new InvalidDataException();
+            }
+            return receipts.Values.ToArray();
         }
 
-        public static async Task HandleHandshake(HttpRequest req, HttpResponse res)
+        private static int Count(ChunkSession session) => checked((int)((session.FileSize - 1) / CHUNK_SIZE + 1));
+        private static long ChunkLength(ChunkSession session, int index) => Math.Min(CHUNK_SIZE, session.FileSize - (long)(index - 1) * CHUNK_SIZE);
+        private static WebHookHelper Hook(ChunkSession session) => WebHookHelper.FromVerifiedState(Program.uploadClient,
+            session.WebhookUrl, session.ChannelId, session.WebhookId, session.WebhookToken);
+
+        private sealed class ManifestTooLargeException : Exception;
+
+        private static async Task Run(HttpRequest req, HttpResponse res, Func<Task> action, bool uploading = false)
         {
-            req.Headers.TryGetValue("turnstile", out var turnstile);
-
-            if (!req.Headers.TryGetValue("webhook", out var webHook))
+            res.Headers.CacheControl = "no-store";
+            if (!await ActiveRequests.WaitAsync(0, req.HttpContext.RequestAborted))
             {
-                webHook = Environment.GetEnvironmentVariable("WEBHOOK");
-            }
-
-            req.Headers.TryGetValue("filename", out var fileName);
-            req.Headers.TryGetValue("filesize", out var fileSizeStr);
-
-            if (webHook.Count <= 0 || string.IsNullOrWhiteSpace(webHook) || ((string)webHook).Length > 256 || fileName.Count <= 0 || ((string)fileName).Length > 64 || fileSizeStr.Count <= 0 || !long.TryParse(fileSizeStr, out long fileSize) || fileSize <= 0)
-            {
-                res.SendStatus(400, "Webhook or FileName or FileSize header is missing or invalid");
+                res.StatusCode = 429;
                 return;
             }
-
-            Guid sessionId = Guid.NewGuid();
-
-            byte[] key = RandomNumberGenerator.GetBytes(new Random().Next(16, 20));
-            AesCTRStream aesctrs = new AesCTRStream(null, key);
-
-            var totalChunks = (int)(fileSize / DiscordFilesSpliter.CHUNK_SIZE) + 1;
-
-            Sessions[sessionId] = new UploadSession()
+            try
             {
-                WebHook = new WebHookHelper(Program.client, webHook),
-                FileName = fileName,
-                FileSize = fileSize,
-                Key = key,
-                AesStream = aesctrs,
-                LastUploaded = DateTime.UtcNow,
-
-                TotalChunks = totalChunks,
-                ChunkNum = 0,
-                TotalWritted = 0,
-
-                AttachementsIDs = new ulong[totalChunks],
-                MessagesIDs = new ulong[totalChunks]
-            };
-
-            res.Headers["Cache-Control"] = ("no-cache, no-store, no-transform");
-            res.Headers["Session-ID"] = (sessionId.ToString());
-            res.Headers["ChunkSize"] = (DiscordFilesSpliter.CHUNK_SIZE.ToString());
-            res.SendStatus(200, "Happy happy happy 😊");
-        }
-
-        public static async Task HandleChunk(HttpRequest req, HttpResponse res)
-        {
-            req.Headers.TryGetValue("Session-ID", out var sessionString);
-
-            if (string.IsNullOrWhiteSpace(sessionString) || !Guid.TryParse(sessionString, out Guid sessionGuid) || !Sessions.TryGetValue(sessionGuid, out UploadSession session))
-            {
-                res.SendStatus(410, "410 Session not provided");
-                return;
+                await action();
             }
-
-            req.Headers.TryGetValue("chunk", out var chunkStr);
-
-            if (!int.TryParse(chunkStr, out int chunkIndex) || chunkIndex <= 0)
+            catch (ManifestTooLargeException) { res.StatusCode = 413; }
+            catch (CryptographicException) { res.StatusCode = 410; await res.WriteAsync("Invalid or expired upload authorization."); }
+            catch (Exception ex) when (ex is JsonException or InvalidDataException or ArgumentException or EndOfStreamException)
             {
-                res.SendStatus(400, "400 Chunk index is missing or invalid");
-                return;
+                res.StatusCode = 400;
+                await res.WriteAsync("Invalid upload request or fragment receipts.");
             }
-
-            chunkIndex -= 1;
-
-            if (chunkIndex != session.ChunkNum)
+            catch (OperationCanceledException) when (req.HttpContext.RequestAborted.IsCancellationRequested) { }
+            catch (OperationCanceledException)
             {
-                res.SendStatus(409, "409 Chunk index is invalid");
-                return;
+                if (uploading)
+                    res.Headers["Upload-Retry"] = "blocked";
+                res.StatusCode = 504;
+                await res.WriteAsync("Storage confirmation timed out.");
             }
-
-            session.LastUploaded = DateTime.UtcNow;
-
-            using (var httpStream = new HttpStream(req))
+            catch (HttpRequestException)
             {
-                if (session.TotalChunks != session.ChunkNum + 1 && httpStream.Length != DiscordFilesSpliter.CHUNK_SIZE)
-                {
-                    res.SendStatus(422, "File is not exactly " + DiscordFilesSpliter.CHUNK_SIZE + " bytes");
-                    return;
-                }
-
-                string attachementName = DiscordFilesSpliter.EncodeAttachementName(session.WebHook.channelId, chunkIndex, session.TotalChunks);
-
-                byte[] content = new byte[httpStream.Length];
-                int readed = 0, totalReaded = 0;
-
-                while ((readed = await httpStream.ReadAsync(content, totalReaded, content.Length - totalReaded)) > 0)
-                {
-                    totalReaded += readed;
-                }
-
-                int aesBasePosition = (chunkIndex) * DiscordFilesSpliter.CHUNK_SIZE;
-                session.AesStream.Position = aesBasePosition;
-                session.AesStream.Encode(content, content.Length);
-
-                using (var sc = new ByteArrayContent(content))
-                {
-                    JsonNode? response = JsonNode.Parse(await session.WebHook.PostFileToWebhook([new WebHookHelper.FileData()
-                    {
-                        FileName = attachementName,
-                        Data = sc
-                    }]));
-
-                    ulong attachementId = ulong.Parse((string)response["attachments"][0]["id"]);
-                    ulong messageId = ulong.Parse((string)response["id"]);
-
-                    if (attachementId <= 0 || messageId <= 0)
-                        throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
-
-                    session.MessagesIDs[chunkIndex] = messageId;
-                    session.AttachementsIDs[chunkIndex] = attachementId;
-                    session.TotalWritted += content.Length;
-
-                    if (session.ChunkNum + 1 == session.TotalChunks)
-                    {
-                        using (MemoryStream seedData = new MemoryStream())
-                        using (BinaryWriter bw = new BinaryWriter(seedData))
-                        {
-                            ByteConfig config = new ByteConfig() { Compression = false, VersionNumber = 2 };
-
-                            bw.Write(config.ToByte());
-                            bw.Write(session.FileSize);
-                            bw.Write(session.WebHook.channelId);
-                            bw.Write(new GorillaTimestampCompressor().Compress(session.AttachementsIDs.ToArray()));
-
-                            var webHook = session.WebHook;
-
-                            var uploaded = new Upload(
-                                session.FileName,
-                                seedData.ToArray().Deflate(),
-                                session.Key,
-                                new GorillaTimestampCompressor().Compress(session.MessagesIDs),
-                                ref webHook
-                            );
-
-
-                            await res.WriteAsync(JWTManager.JWTEnabled ? JWTManager.CreateSecureToken(uploaded.Json) : uploaded.Json);
-                            Sessions.TryRemove(sessionGuid, out _);
-                            return;
-                        }
-                    }
-
-                    session.ChunkNum++;
-                    await res.SendStatus(200, $"Chunk {session.ChunkNum}/{session.TotalChunks} uploaded 🥵");
-                }
+                if (uploading)
+                    res.Headers["Upload-Retry"] = "blocked";
+                res.StatusCode = 502;
+                await res.WriteAsync("Discord did not confirm the operation.");
             }
+            finally { ActiveRequests.Release(); }
         }
     }
 }

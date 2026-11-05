@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Cloudflare Tunnel Service
   tunnel:
@@ -11,6 +9,9 @@ services:
       - DSF-VPC-01
 
   dsfiles_server:
+    build:
+      context: ..
+      dockerfile: DOCKERFILE
     image: mrgaton/dsfiles_server:latest
     container_name: dsfiles_server
     env_file: .env.production

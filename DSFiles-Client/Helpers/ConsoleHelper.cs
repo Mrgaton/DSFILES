@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace DSFiles_Client.Helpers
@@ -54,7 +54,6 @@ namespace DSFiles_Client.Helpers
                     FontSize = fontSize > 0 ? fontSize : before.FontSize
                 };
 
-                // Get some settings from current font.
                 if (!SetCurrentConsoleFontEx(ConsoleOutputHandle, false, ref set))
                 {
                     var ex = Marshal.GetLastWin32Error();

@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.IO.Pipelines;
@@ -16,22 +16,16 @@ namespace DSFiles_Shared
         private static HttpClient client = new HttpClient();
 
         public const string UnsendedIds = "Missing.dat";
-        public static StreamWriter UnsendedIdsWriter { get => new StreamWriter(File.Open(UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)) { AutoFlush = true }; }
-
-        /*public static IEnumerable<byte[]> SplitByLength(byte[] bytes, int maxLength)
+        public static StreamWriter UnsendedIdsWriter
         {
-            for (int index = 0; index < bytes.Length; index += maxLength)
-            {
-                yield return bytes.Skip(index).Take(Math.Min(maxLength, bytes.Length - index)).ToArray();
-            }
-        }*/
-
-        //private const long CHUNK_SIZE = (25 * 1024 * 1024) - 256;
+            get => new StreamWriter(File.Open(UnsendedIds, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)) { AutoFlush = true };
+        }
 
         public static IProgress<string> ConsoleProgress = new Progress<string>(Console.WriteLine);
         public static IProgress<string> ErrorProgress = new Progress<string>(Console.Error.WriteLine);
 
-        public const int CHUNK_SIZE = (10 * 1000 * 1000) - 256;
+        // Discord webhook limit verified on 2026-11-04: 20 MiB, with 255 bytes of headroom.
+        public const int CHUNK_SIZE = (20 * 1024 * 1024) - 255;
         private const int IOBuffer = 128 * 1024;
 
         private const int MaxTimeListBuffer = 10;
@@ -40,19 +34,18 @@ namespace DSFiles_Shared
 
         public static async Task<string[]> RefreshUrls(string[] urls)
         {
-            if (urls.Length > 50) throw new Exception("urls length cant be bigger than 50");
+            if (urls.Length > 50)
+                throw new Exception("urls length cant be bigger than 50");
 
             using (HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, "https://gato.ovh/attachments/refresh-urls"))
             {
-                var data = JsonSerializer.Serialize(new Dictionary<string, object>() { { "attachment_urls", urls } });
+                var data = new JsonObject { ["attachment_urls"] = new JsonArray(urls.Select(url => (JsonNode?)JsonValue.Create(url)).ToArray()) }.ToJsonString();
 
                 message.Content = new StringContent(data);
 
                 using (HttpResponseMessage response = await client.SendAsync(message))
                 {
                     var str = await response.Content.ReadAsStringAsync();
-
-                    //Console.WriteLine(str);
 
                     return JsonNode.Parse(str)["refreshed_urls"].AsArray().Select(element => (string)element["refreshed"]).ToArray();
                 }
@@ -82,7 +75,8 @@ namespace DSFiles_Shared
 
                 Console.WriteLine('\n');
 
-                if (!compress) return CompressionLevel.NoCompression;
+                if (!compress)
+                    return CompressionLevel.NoCompression;
 
                 Console.Write("Select one of following options (fastest L1, optimal L4, smallest size L11) [F,O,S]:");
                 char compressionLevel = GetConsoleKeyChar(['f', 'o', 's']);
@@ -123,22 +117,13 @@ namespace DSFiles_Shared
             return response;
         }
 
-        /// <summary>
-        /// Encode part
-        /// </summary>
-        /// <param name="webHookId"></param>
-        /// <param name="token"></param>
-        /// <param name="buffer"></param>
-        /// <param name="compress"></param>
-        /// <returns></returns>
-        ///
         private static Stopwatch sw = new Stopwatch();
 
         private static int MaxCompressionFileSize = (int.MaxValue / 8) * 7;
 
         public static async Task<Upload> Encode(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression) => await EncodeCore(webHook, name, stream, level);
 
-        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, bool onTheFlyCompression = false, byte[] encodeKey = null, StreamWriter tempIdsWriter = null, bool disposeIdsWritter = true)
+        public static async Task<Upload> EncodeCore(WebHookHelper webHook, string name, Stream stream, CompressionLevel? level = CompressionLevel.NoCompression, bool onTheFlyCompression = false, byte[] encodeKey = null, StreamWriter tempIdsWriter = null, bool disposeIdsWritter = true, bool encrypt = true, bool persistSeed = true)
         {
             bool compress = level != CompressionLevel.NoCompression;
 
@@ -187,8 +172,6 @@ namespace DSFiles_Shared
                     stream.Position = 0;
                 }
 
-                //await seedData.WriteAsync(BitConverter.GetBytes(encodedSize = (ulong)dataStream.Length), 0, sizeof(ulong));
-
                 int messagesToSend = (int)((ulong)stream.Length / CHUNK_SIZE) + 1, messagesSended = 0;
 
                 List<ulong> attachmentsIdsList = [];
@@ -201,7 +184,7 @@ namespace DSFiles_Shared
 
                 sw.Start();
 
-                byte[] key = encodeKey ?? RandomNumberGenerator.GetBytes(new Random().Next(10, 16));
+                byte[] key = encrypt ? encodeKey ?? RandomNumberGenerator.GetBytes(new Random().Next(10, 16)) : null;
 
                 using (AesCTRStream ts = new AesCTRStream(null, key))
                 {
@@ -220,7 +203,8 @@ namespace DSFiles_Shared
                                 ulong attachementId = ulong.Parse((string)response["attachments"][0]["id"]);
                                 ulong messageId = ulong.Parse((string)response["id"]);
 
-                                if (attachementId <= 0 || messageId <= 0) throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
+                                if (attachementId <= 0 || messageId <= 0)
+                                    throw new InvalidDataException("Failed to upload the chunk and retrieve the attachment");
 
                                 tempIdsWriter.WriteLine(messageId.ToString());
                                 tempIdsWriter.Flush();
@@ -240,14 +224,13 @@ namespace DSFiles_Shared
                         totalWrited += count;
 
                         timeList.Add(sw.ElapsedMilliseconds);
-                        if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
+                        if (timeList.Count > MaxTimeListBuffer)
+                            timeList.RemoveAt(0);
                         long average = (timeList.Sum() / timeList.Count);
                         long totalTime = (messagesToSend - index - 1) * average;
 
                         ConsoleProgress.Report(AnsiColors.Gold + "Uploaded " + AnsiColors.Cyan + messagesSended + (!compress ? AnsiColors.Silver + "/" + AnsiColors.BrightCyan + messagesToSend : null) + AnsiColors.Gold + " total writed is " + AnsiColors.Silver + ByteSizeToString(totalWrited) + AnsiColors.Gold + " took " + AnsiColors.BrightBlue + sw.ElapsedMilliseconds + AnsiColors.Gold + "ms eta " + AnsiColors.LightBlue + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + AnsiColors.Gold + " end " + AnsiColors.LightGray + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss"));
 
-                        if (sw.ElapsedMilliseconds < 2000)
-                            Thread.Sleep(2000 - (int)sw.ElapsedMilliseconds);
                     };
 
                     if (compress && onTheFlyCompression)
@@ -257,7 +240,6 @@ namespace DSFiles_Shared
                         var writer = pipe.Writer;
                         var reader = pipe.Reader;
 
-                        // Producer: compress into the pipe (runs concurrently)
                         var producer = Task.Run(async () =>
                         {
                             try
@@ -273,12 +255,11 @@ namespace DSFiles_Shared
                             }
                             catch (Exception ex)
                             {
-                                // Propagate to reader side
+
                                 writer.Complete(ex);
                             }
                         });
 
-                        // Consumer: read compressed bytes from the pipe and produce fixed-size chunks
                         var buffer = ArrayPool<byte>.Shared.Rent(CHUNK_SIZE);
                         try
                         {
@@ -290,23 +271,17 @@ namespace DSFiles_Shared
                                 long consumedBytesTotal = 0;
                                 bool emittedFullChunk = false;
 
-                                // Consume the ReadOnlySequence in a loop, copying into rented buffer.
                                 while (seq.Length > 0)
                                 {
                                     int toCopy = (int)Math.Min(seq.Length, CHUNK_SIZE - filled);
 
-                                    // Copy first toCopy bytes from seq into our buffer at 'filled'.
-                                    // This creates a temporary span expression only — not stored across awaits.
                                     seq.Slice(0, toCopy).CopyTo(buffer.AsSpan(filled));
 
                                     filled += toCopy;
                                     consumedBytesTotal += toCopy;
 
-                                    // Move our local view of seq forward.
                                     seq = seq.Slice(toCopy);
 
-                                    // If we filled the chunk, advance the PipeReader (so the pipe drops the bytes),
-                                    // then call the async callback (safe because no Span is alive).
                                     if (filled == CHUNK_SIZE)
                                     {
                                         var consumedPosition = readResult.Buffer.GetPosition(consumedBytesTotal);
@@ -318,13 +293,13 @@ namespace DSFiles_Shared
 
                                         filled = 0;
                                         emittedFullChunk = true;
-                                        break; // break inner loop and do another ReadAsync
+                                        break;
                                     }
                                 }
 
                                 if (!emittedFullChunk)
                                 {
-                                    // We didn't emit a full chunk; inform the pipe how many bytes we consumed.
+
                                     var consumedPosition = readResult.Buffer.GetPosition(consumedBytesTotal);
                                     reader.AdvanceTo(consumedPosition, readResult.Buffer.End);
                                 }
@@ -332,10 +307,8 @@ namespace DSFiles_Shared
                                 if (readResult.IsCompleted)
                                     break;
 
-                                // continue to next ReadAsync
                             }
 
-                            // Emit final partial chunk if any bytes remain
                             if (filled > 0)
                             {
                                 ts.Encode(buffer, filled);
@@ -351,7 +324,6 @@ namespace DSFiles_Shared
                             await reader.CompleteAsync();
                         }
 
-                        // Ensure producer completed and propagate any exceptions it threw
                         await producer;
                     }
                     else
@@ -390,7 +362,8 @@ namespace DSFiles_Shared
 
                 try
                 {
-                    File.WriteAllBytes("seeds\\" + Directory.EnumerateFiles("seeds\\").Count(), seedData.ToArray());
+                    if (persistSeed)
+                        File.WriteAllBytes("seeds\\" + Directory.EnumerateFiles("seeds\\").Count(), seedData.ToArray());
                 }
                 catch { }
 
@@ -398,12 +371,6 @@ namespace DSFiles_Shared
             }
         }
 
-        /// <summary>
-        /// Decode part
-        /// </summary>
-        /// <param name="seed"></param>
-        /// <param name="filePath"></param>
-        /// <returns></returns>
         public const int RefreshUrlsChunkSize = 50;
 
         public static async Task<ByteConfig> Decode(byte[] seed, byte[]? key, Stream stream) => await DecodeCore(seed, key, stream);
@@ -422,15 +389,12 @@ namespace DSFiles_Shared
 
                 ulong[] attachmentsId = new GorillaTimestampCompressor().Decompress(br.ReadBytes((int)seedData.Length - (sizeof(ulong) + sizeof(long)) - sizeof(bool)));
 
-                //Console.WriteLine(string.Join("\n", attachmentsId));
-
                 int attachments = attachmentsId.Length;
-
-                //Stream? outputStream = config.Compression ? StreamCompression.GetCompressorStream((ulong)aproxSize * 2) : stream;
 
                 ConsoleProgress.Report("Downloading " + ByteSizeToString(totalSize) + "\n\n");
 
-                string[] attachmentsUrls = attachmentsId.Select((id, index) => $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, index, (int)(totalSize / CHUNK_SIZE) + 1)}").ToArray();
+                int attachmentNameCount = config.Compression ? (int)(totalSize / CHUNK_SIZE) + 1 : attachmentsId.Length;
+                string[] attachmentsUrls = attachmentsId.Select((id, index) => $"https://cdn.discordapp.com/attachments/{channelId}/{id}/{EncodeAttachementName(channelId, index, attachmentNameCount)}").ToArray();
 
                 sw.Start();
 
@@ -468,8 +432,8 @@ namespace DSFiles_Shared
                                 catch (Exception ex)
                                 {
                                     WriteException(ref ex);
-                                    ts.Position = originalPosition;      // rewind the stream so the next write lands in the exact same spot
-                                    Thread.Sleep(2500);
+                                    ts.Position = originalPosition;
+                                    await Task.Delay(2500);
                                     continue;
                                 }
 
@@ -515,14 +479,13 @@ namespace DSFiles_Shared
                             }
 
                             timeList.Add(sw.ElapsedMilliseconds);
-                            if (timeList.Count > MaxTimeListBuffer) timeList.RemoveAt(0);
+                            if (timeList.Count > MaxTimeListBuffer)
+                                timeList.RemoveAt(0);
                             long average = (timeList.Sum() / timeList.Count);
                             long totalTime = (attachments - e) * average;
 
                             ConsoleProgress.Report(" downloaded " + ByteSizeToString(downloaded) + " took " + sw.ElapsedMilliseconds + "ms eta " + TimeSpan.FromMilliseconds(totalTime).ToReadableString() + " end " + DateTime.Now.AddMilliseconds(totalTime).ToString("HH:mm:ss") + '\n');
 
-                            //var decoded = dataPart;// U(dataPart, XorKey);
-                            //await stream.WriteAsync(decoded, 0, dataPart.Length);
                         }
 
                         await stream.FlushAsync();
@@ -573,18 +536,33 @@ namespace DSFiles_Shared
         {
             public string FileName { get; set; }
             public byte[] RawSeed { get; set; }
-            public string SeedString { get => this.RawSeed.ToBase64Url() + (this.Key != null ? '$' + this.Key.ToBase64Url() : null); }
-            public string DownloadToken { get => $"{Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(this.FileName)).BrotliCompress().ToBase64Url()}:{Path.GetExtension(this.FileName).TrimStart('.')}:{SeedString}"; }
+            public string SeedString
+            {
+                get => this.RawSeed.ToBase64Url() + (this.Key != null ? '$' + this.Key.ToBase64Url() : null);
+            }
+            public string DownloadToken
+            {
+                get => $"{Encoding.UTF8.GetBytes(Path.GetFileNameWithoutExtension(this.FileName)).BrotliCompress().ToBase64Url()}:{Path.GetExtension(this.FileName).TrimStart('.')}:{SeedString}";
+            }
             public byte[] Secret { get; set; }
             public byte[] Key { get; set; }
             public WebHookHelper WebHook { get; set; }
-            public string RemoveToken { get => $"{this.Secret.ToBase64Url()}:{BitConverter.GetBytes(this.WebHook.id).ToBase64Url()}:{this.WebHook.token}"; }
+            public string RemoveToken
+            {
+                get => $"{this.Secret.ToBase64Url()}:{BitConverter.GetBytes(this.WebHook.id).ToBase64Url()}:{this.WebHook.token}";
+            }
 
-            public string WebLink { get => $"https://df.gato.ovh/d/{SeedString}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(this.FileName))}"; }
+            public string WebLink
+            {
+                get => $"https://df.gato.ovh/d/{SeedString}/{HttpUtility.UrlEncode(Encoding.UTF8.GetBytes(this.FileName))}";
+            }
             public string UploadLog { get; set; }
-            public string Json { get => $"{{\"name\":\"{FileName}\",\"seed\":\"{SeedString}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\"}}"; }
+            public string Json
+            {
+                get => $"{{\"name\":\"{FileName}\",\"seed\":\"{SeedString}\",\"removeToken\":\"{RemoveToken}\",\"webLink\":\"{WebLink}\"}}";
+            }
 
-            public Upload(string fileName, byte[] seed, byte[] key, byte[] secret, ref WebHookHelper webHookHelper)
+            public Upload(string fileName, byte[] seed, byte[] key, byte[] secret, ref WebHookHelper webHookHelper, bool postLog = true)
             {
                 this.FileName = fileName;
                 this.Secret = secret;
@@ -598,40 +576,15 @@ namespace DSFiles_Shared
                 sb.AppendLine($"Seed: `{this.RawSeed}`");
                 sb.AppendLine($"RemoveToken: `{this.RemoveToken}`");
 
-                /*this.Shortened = SendJspaste(fileSeed);
-
-                 if (!string.IsNullOrEmpty(Shortened))
-                 {
-                     sb.AppendLine($"Shortened: `{this.Shortened}`");
-                 }*/
-
                 sb.AppendLine($"`WebLink:` {this.WebLink}");
 
                 this.UploadLog = sb.ToString();
-                string keyString = key.ToBase64Url();
+                string keyString = key?.ToBase64Url();
 
-                webHookHelper.SendMessageInChunks(string.Join("\n", this.UploadLog.Split('\n').Where(l => !l.Contains(keyString)))).GetAwaiter().GetResult();
+                if (postLog)
+                    webHookHelper.SendMessageInChunks(string.Join("\n", this.UploadLog.Split('\n').Where(l => keyString == null || !l.Contains(keyString)))).GetAwaiter().GetResult();
             }
 
-            /*private static string SendJspaste(string data)
-            {
-                try
-                {
-                    return "jsp:/" + JSPasteClient.Publish($"#DSFILES {assemblyVersion}\n\n" + data, new DocumentSettings()
-                    {
-                        LifeTime = TimeSpan.MaxValue,
-                        KeyLength = 4,
-                        Password = "hola",
-                        Secret = "acrostico"
-                    }).Result.Key;
-                }
-                catch (Exception ex)
-                {
-                    WriteException(ref ex);
-                }
-
-                return null;
-            }*/
         }
 
         public class GorillaTimestampCompressor
@@ -696,42 +649,25 @@ namespace DSFiles_Shared
                 return results.ToArray();
             }
 
-            /*private static int GetBits(long v)
-            {
-                ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
-
-                for(int i = 0; i < 64;i++)
-                {
-                    if (uv < (1UL << i))
-                    {
-                        return i;
-                    }
-                }
-
-                return 0;
-            }*/
-
             private void WriteDod(long v)
             {
                 ulong uv = ((ulong)(v << 1)) ^ (ulong)(v >> 63);
 
-                //Console.Write($"[WriteDod] dod={v} uv=0x{uv:X}");
-
                 if (uv < (1UL << 28))
                 {
-                    //Console.Write(" Bits:" + (2 + 28) + " Size:" + GetBits(v));
+
                     _out.WriteBits(0b00, 2);
                     _out.WriteBits(uv, 28);
                 }
                 else if (uv < (1UL << 30))
                 {
-                    //Console.Write(" Bits:" + (2 + 30) + " Size:" + GetBits(v));
+
                     _out.WriteBits(0b10, 2);
                     _out.WriteBits(uv, 30);
                 }
                 else if (uv < (1UL << 34))
                 {
-                    //Console.Write(" Bits:" + (2 + 34) + " Size:" + GetBits(v));
+
                     _out.WriteBits(0b01, 2);
                     _out.WriteBits(uv, 34);
                 }
@@ -742,12 +678,10 @@ namespace DSFiles_Shared
                         throw new InvalidOperationException("Dod encoder exceded maximun of 40 bits :c");
                     }
 
-                    //Console.Write(" Bits:" + (2 + 40) + " Size:" + GetBits(v));
                     _out.WriteBits(0b11, 2);
                     _out.WriteBits(uv, 40);
                 }
 
-                //Console.Write("\n");
             }
 
             private long ReadDod()
@@ -786,9 +720,11 @@ namespace DSFiles_Shared
 
                 public void WriteBit(int b)
                 {
-                    if (b != 0) _cur |= (byte)(1 << (7 - _bitPos));
+                    if (b != 0)
+                        _cur |= (byte)(1 << (7 - _bitPos));
                     _bitPos++;
-                    if (_bitPos == 8) FlushByte();
+                    if (_bitPos == 8)
+                        FlushByte();
                 }
 
                 public void WriteBits(ulong v, int count)
@@ -806,7 +742,8 @@ namespace DSFiles_Shared
 
                 public void Flush()
                 {
-                    if (_bitPos > 0) FlushByte();
+                    if (_bitPos > 0)
+                        FlushByte();
                 }
 
                 public byte[] ToArray()
@@ -885,13 +822,20 @@ namespace DSFiles_Shared
 
         public static string ByteSizeToString(long size)
         {
-            if (size > Exabyte) return (size / ((double)Exabyte)).ToString(DecimalMask) + "EB";
-            else if (size > Petabyte) return (size / ((double)Petabyte)).ToString(DecimalMask) + "PB";
-            else if (size > Terabyte) return (size / ((double)Terabyte)).ToString(DecimalMask) + "TB";
-            else if (size > Gigabyte) return (size / ((double)Gigabyte)).ToString(DecimalMask) + "GB";
-            else if (size > Megabyte) return (size / ((double)Megabyte)).ToString(DecimalMask) + "MB";
-            else if (size > Kilobyte) return (size / ((double)Kilobyte)).ToString(DecimalMask) + "KB";
-            else return size + "B";
+            if (size > Exabyte)
+                return (size / ((double)Exabyte)).ToString(DecimalMask) + "EB";
+            else if (size > Petabyte)
+                return (size / ((double)Petabyte)).ToString(DecimalMask) + "PB";
+            else if (size > Terabyte)
+                return (size / ((double)Terabyte)).ToString(DecimalMask) + "TB";
+            else if (size > Gigabyte)
+                return (size / ((double)Gigabyte)).ToString(DecimalMask) + "GB";
+            else if (size > Megabyte)
+                return (size / ((double)Megabyte)).ToString(DecimalMask) + "MB";
+            else if (size > Kilobyte)
+                return (size / ((double)Kilobyte)).ToString(DecimalMask) + "KB";
+            else
+                return size + "B";
         }
 
         public sealed class ByteConfig
@@ -901,21 +845,24 @@ namespace DSFiles_Shared
             public int VersionNumber { get; set; }
 
             public ByteConfig()
-            { }
+            {
+            }
 
             public ByteConfig(byte header)
             {
                 this.Compression = (header & 0b10000000) != 0;
                 this.VersionNumber = header & 0b00001111;
 
-                if (VersionNumber == 0 || VersionNumber == 15) throw new ArgumentException("Byte header has been made with an unsuported byte");
+                if (VersionNumber == 0 || VersionNumber == 15)
+                    throw new ArgumentException("Byte header has been made with an unsuported byte");
             }
 
             public byte ToByte()
             {
                 byte result = 0;
 
-                if (Compression) result |= 0b10000000;
+                if (Compression)
+                    result |= 0b10000000;
 
                 result |= (byte)(VersionNumber & 0b00001111);
                 return result;

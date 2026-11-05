@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 
 namespace DSFiles_Client.CGuis
@@ -10,12 +10,11 @@ namespace DSFiles_Client.CGuis
         public Progress()
         {
             InitializeComponent();
-         
+
             Thread staThread = new Thread(() => ActionToRun());
-            staThread.SetApartmentState(ApartmentState.STA);
+
             staThread.Start();
 
-            //Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default);
         }
     }
 }

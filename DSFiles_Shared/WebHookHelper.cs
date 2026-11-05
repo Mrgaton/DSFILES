@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -10,7 +10,7 @@ namespace DSFiles_Shared
     {
         private HttpClient _client { get; set; }
 
-        private static string WebHookUrl = string.Empty;
+        private string WebHookUrl = string.Empty;
 
         public ulong applicationId { get; set; }
         public string? avatar { get; set; }
@@ -30,25 +30,51 @@ namespace DSFiles_Shared
 
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = $"https://ptb.discord.com/api/webhooks/{webId}/{webToken}").Result)
             {
-                if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
+                if ((int)response.StatusCode != 200)
+                    throw new Exception("Could not find webhook");
 
                 ParseJson(response.Content.ReadAsStringAsync().Result);
             }
         }
 
         public WebHookHelper()
-        { }
+        {
+        }
+
+        public static WebHookHelper FromVerifiedState(HttpClient client, string url, ulong channelId, ulong webhookId, string webhookToken)
+        {
+            if (!WebhookAddress.IsValid(url))
+                throw new ArgumentException("Invalid Discord webhook.", nameof(url));
+            var parts = new Uri(url).AbsolutePath.Split('/');
+            if (parts[^2] != webhookId.ToString() || parts[^1] != webhookToken || channelId == 0)
+                throw new ArgumentException("Webhook metadata does not match its URL.");
+            return new WebHookHelper { _client = client, WebHookUrl = url, channelId = channelId, id = webhookId, token = webhookToken };
+        }
 
         public WebHookHelper(HttpClient client, string url)
         {
+            if (!WebhookAddress.IsValid(url))
+                throw new ArgumentException("A valid HTTPS Discord webhook is required.", nameof(url));
             _client = client;
 
             using (HttpResponseMessage response = MakeRequest(HttpMethod.Get, WebHookUrl = url).Result)
             {
-                if ((int)response.StatusCode != 200) throw new Exception("Could not find webhook");
+                if ((int)response.StatusCode != 200)
+                    throw new Exception("Could not find webhook");
 
                 ParseJson(response.Content.ReadAsStringAsync().Result);
             }
+        }
+
+        public static async Task<WebHookHelper> CreateAsync(HttpClient client, string url, CancellationToken cancellationToken)
+        {
+            if (!WebhookAddress.IsValid(url))
+                throw new ArgumentException("Invalid Discord webhook.", nameof(url));
+            var hook = new WebHookHelper { _client = client, WebHookUrl = url };
+            using var response = await hook.MakeRequest(HttpMethod.Get, url, cancellationToken: cancellationToken);
+            response.EnsureSuccessStatusCode();
+            hook.ParseJson(await response.Content.ReadAsStringAsync(cancellationToken));
+            return hook;
         }
 
         private void ParseJson(string webHookData)
@@ -78,11 +104,13 @@ namespace DSFiles_Shared
 
                 while (sb.Length + line.Length < 2000)
                 {
-                    if (i > splitted.Length - 1) break;
+                    if (i > splitted.Length - 1)
+                        break;
 
                     line = splitted[i];
 
-                    if (sb.Length + line.Length > 2000) break;
+                    if (sb.Length + line.Length > 2000)
+                        break;
 
                     sb.AppendLine(line);
                     i++;
@@ -111,9 +139,10 @@ namespace DSFiles_Shared
         {
             foreach (ulong id in ids)
             {
-                if (id <= 0) continue;
+                if (id <= 0)
+                    continue;
 
-                retry:
+            retry:
 
                 p.Report("Removing message id: " + id);
 
@@ -177,7 +206,8 @@ namespace DSFiles_Shared
             for (int i = 0; i < fileNames.Length; i++)
             {
                 var buffer = filesData[i];
-                if (buffer is null) continue;
+                if (buffer is null)
+                    continue;
                 form.Add(new ByteArrayContent(buffer, 0, buffer.Length), i.ToString(), fileNames[i]);
             }
 
@@ -193,17 +223,25 @@ namespace DSFiles_Shared
             });
         }
 
-        public async Task<string> PostFileToWebhook(MultipartFormDataContent form)
+        public async Task<string> PostFileToWebhook(MultipartFormDataContent form, CancellationToken cancellationToken = default)
         {
-            using (HttpResponseMessage req = await _client.PostAsync(WebHookUrl, form))
+            for (int attempt = 0; ; attempt++)
             {
-                var response = await req.Content.ReadAsStringAsync();
+                using HttpResponseMessage req = await _client.PostAsync(WebHookUrl, form, cancellationToken);
+                var response = await req.Content.ReadAsStringAsync(cancellationToken);
+                if (req.StatusCode != HttpStatusCode.TooManyRequests)
+                    return string.IsNullOrEmpty(response) ? req.StatusCode.ToString() : response;
+                if (attempt >= 5)
+                    req.EnsureSuccessStatusCode();
 
-                return string.IsNullOrEmpty(response) ? req.StatusCode.ToString() : response;
+                TimeSpan delay = req.Headers.RetryAfter?.Delta
+                    ?? (req.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow)
+                    ?? TimeSpan.FromSeconds(JsonNode.Parse(response)?["retry_after"]?.GetValue<double>() ?? 1);
+                await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(1), cancellationToken);
             }
         }
 
-        private async Task<HttpResponseMessage> MakeRequest(HttpMethod method, string url, string content = null, Dictionary<string, string> headers = null)
+        private async Task<HttpResponseMessage> MakeRequest(HttpMethod method, string url, string content = null, Dictionary<string, string> headers = null, CancellationToken cancellationToken = default)
         {
             using (HttpRequestMessage req = new HttpRequestMessage(method, url))
             {
@@ -213,17 +251,20 @@ namespace DSFiles_Shared
                     req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 }
 
-                if (headers != null) foreach (var header in headers) req.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                if (headers != null)
+                    foreach (var header in headers)
+                        req.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
-                HttpResponseMessage res = await _client.SendAsync(req);
+                HttpResponseMessage res = await _client.SendAsync(req, cancellationToken);
 
                 if (res.Headers.RetryAfter != null)
                 {
-                    int time = (int)res.Headers.RetryAfter.Delta.Value.TotalSeconds;
+                    TimeSpan delay = res.Headers.RetryAfter.Delta
+                        ?? (res.Headers.RetryAfter.Date!.Value - DateTimeOffset.UtcNow);
+                    res.Dispose();
+                    await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(1), cancellationToken);
 
-                    Thread.Sleep(time + 1);
-
-                    return await MakeRequest(method, url, content, headers);
+                    return await MakeRequest(method, url, content, headers, cancellationToken);
                 }
 
                 return res;

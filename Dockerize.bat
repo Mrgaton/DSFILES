@@ -1,7 +1,9 @@
 @echo off
+setlocal
+cd /d "%~dp0"
 
-docker build -t mrgaton/dsfiles_server -f DOCKERFILE .
-docker tag dsfiles_server mrgaton/dsfiles_server
-docker push mrgaton/dsfiles_server
+docker build -t mrgaton/dsfiles_server:latest -f DOCKERFILE .
+if errorlevel 1 exit /b 1
 
-timeout /t 3
+docker push mrgaton/dsfiles_server:latest
+if errorlevel 1 exit /b 1

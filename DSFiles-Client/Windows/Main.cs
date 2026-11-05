@@ -1,13 +1,5 @@
-﻿using DSFiles_Client.Helpers;
-using DSFiles_Shared;
-using System;
-using System.IO;
-using System.IO.Compression;
-using System.Linq;
-using System.Threading.Tasks;
-using Terminal.Gui.Views;
-using Application = Terminal.Gui.App.Application;
-using Clipboard = System.Windows.Forms.Clipboard;
+using DSFiles_Client.Helpers;
+using static DSFiles_Shared.DiscordFilesSpliter;
 
 namespace DSFiles_Client.CGuis
 {
@@ -23,8 +15,8 @@ namespace DSFiles_Client.CGuis
             {
                 this.Enabled = false;
 
-                App.Run<Download>();
-                //Application.Run<Download>();
+                var download = new Download(App);
+                App.Run(download);
 
                 this.Enabled = true;
             };
@@ -33,8 +25,8 @@ namespace DSFiles_Client.CGuis
             {
                 this.Enabled = false;
 
-                App.Run<Upload>();
-                //Application.Run<Download>();
+                var upload = new Upload(App);
+                App.Run(upload);
 
                 this.Enabled = true;
             };
@@ -42,7 +34,10 @@ namespace DSFiles_Client.CGuis
             removeButton.Accepting += (s, e) =>
             {
                 this.Enabled = false;
-                App.Run<Remove>();
+
+                var remove = new Remove(App);
+                App.Run(remove);
+
                 this.Enabled = true;
             };
         }

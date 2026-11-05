@@ -1,8 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -10,10 +9,10 @@ namespace DSFiles_Server.Routes
 {
     internal static class WebSocketHandler
     {
-        private static ConcurrentDictionary<Int128, ConcurrentDictionary<WebSocket,ulong>> clients = new();
+        private static ConcurrentDictionary<Int128, ConcurrentDictionary<WebSocket, ulong>> clients = new();
 
         public static async Task HandleWebSocket(HttpContext ctx, WebSocket ws)
-        { 
+        {
             var poolKey = BitConverter.ToInt128(MD5.HashData(Encoding.UTF8.GetBytes(ctx.Request.Path)), 0);
 
             Console.WriteLine($"Client connected to pool: {poolKey}");
@@ -22,8 +21,6 @@ namespace DSFiles_Server.Routes
             {
                 clients[poolKey] = new();
             }
-
-            //DisableUtf8Validation(socket);
 
             var pool = clients[poolKey];
 
@@ -80,7 +77,7 @@ namespace DSFiles_Server.Routes
                                 {
                                     var client = elements.Key;
 
-                                    if (client.State == WebSocketState.Open) // client != sender &&
+                                    if (client.State == WebSocketState.Open)
                                     {
                                         try
                                         {

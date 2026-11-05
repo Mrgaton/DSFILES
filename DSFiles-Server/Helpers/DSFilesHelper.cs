@@ -1,4 +1,4 @@
-﻿using DSFiles_Shared;
+using DSFiles_Shared;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
@@ -54,7 +54,8 @@ namespace DSFiles_Server.Helpers
 
         public static async Task<string[]> RefreshUrls(string[] urls)
         {
-            if (urls.Length > 50) throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
+            if (urls.Length > 50)
+                throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
 
             string[] refreshedUrls = new string[urls.Length];
 
@@ -97,7 +98,8 @@ namespace DSFiles_Server.Helpers
                             if (attachementsCache.Count >= maxCacheSize)
                             {
                                 var oldestKey = attachementsCache.Keys.FirstOrDefault();
-                                if (oldestKey != null) attachementsCache.TryRemove(oldestKey, out _);
+                                if (oldestKey != null)
+                                    attachementsCache.TryRemove(oldestKey, out _);
                             }
 
                             if (!string.IsNullOrEmpty(refreshedUrl) && refreshedUrl.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase))
@@ -122,11 +124,12 @@ namespace DSFiles_Server.Helpers
             return refreshedUrls;
         }
 
-        private static async Task<Dictionary<string,string>> RefreshUrlsCore(string[] urls)
+        private static async Task<Dictionary<string, string>> RefreshUrlsCore(string[] urls)
         {
-            if (urls.Length > 50) throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
+            if (urls.Length > 50)
+                throw new ArgumentOutOfRangeException(nameof(urls), "Urls length cant be bigger than 50");
 
-            var data = JsonSerializer.Serialize(new { attachment_urls = urls });
+            var data = new JsonObject { ["attachment_urls"] = new JsonArray(urls.Select(url => (JsonNode?)JsonValue.Create(url)).ToArray()) }.ToJsonString();
 
             using (HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Post, "https://canary.discord.com/api/v9/attachments/refresh-urls")
             {

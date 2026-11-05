@@ -24,8 +24,6 @@ namespace DSFiles_Client.CGuis
 
             SetScheme(WindowsHelper.MainColors);
 
-            ShadowStyle = ShadowStyle.Transparent;
-
             var label = new Label()
             {
                 X = 1,
@@ -41,7 +39,6 @@ namespace DSFiles_Client.CGuis
 
                 Width = Dim.Auto(),
 
-                ShadowStyle = ShadowStyle.None,
                 Title = "Download",
                 IsDefault = false
             };
@@ -52,7 +49,6 @@ namespace DSFiles_Client.CGuis
                 Y = downloadButton.Y,
                 Width = Dim.Auto(),
 
-                ShadowStyle = ShadowStyle.None,
                 Title = "Upload",
             };
 
@@ -62,7 +58,6 @@ namespace DSFiles_Client.CGuis
                 Y = uploadButton.Y,
                 Width = Dim.Auto(),
 
-                ShadowStyle = ShadowStyle.None,
                 Title = "Remove",
             };
 

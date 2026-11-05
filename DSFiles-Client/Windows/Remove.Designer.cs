@@ -48,7 +48,6 @@ namespace DSFiles_Client.CGuis
                 X = Pos.Center(),
                 Y = Pos.Bottom(seedTextField) + 1,
 
-                ShadowStyle = ShadowStyle.None,
                 Text = "Remove",
                 IsDefault = true
             };

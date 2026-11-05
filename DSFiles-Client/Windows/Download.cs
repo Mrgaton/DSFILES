@@ -1,18 +1,19 @@
-﻿using DSFiles_Client.Helpers;
+using DSFiles_Client.Helpers;
 using DSFiles_Shared;
 using System;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Application = Terminal.Gui.App.Application;
+using Terminal.Gui.App;
+using Terminal.Gui.Views;
 using MessageBox = Terminal.Gui.Views.MessageBox;
 
 namespace DSFiles_Client.CGuis
 {
     public partial class Download
     {
-        public Download()
+        public Download(IApplication app)
         {
             InitializeComponent();
 
@@ -20,9 +21,8 @@ namespace DSFiles_Client.CGuis
             {
                 string? fileData = seedTextField.Text.Trim();
 
-                if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase)) fileData = Program.GetFromJspaste(fileData); //JSPasteClient.Get(fileData.Split('/').Last()).Result;
-
-                //Console.WriteLine(fileData);
+                if (fileData.StartsWith("jsp:/", StringComparison.InvariantCultureIgnoreCase))
+                    fileData = Program.GetFromJspaste(fileData);
 
                 string[] fileDataSplited = fileData.Split('/')[0].Split(':');
 
@@ -42,17 +42,17 @@ namespace DSFiles_Client.CGuis
                     );
                 }
 
-                System.Windows.Forms.SaveFileDialog sfd = new System.Windows.Forms.SaveFileDialog()
+                var sd = new SaveDialog()
                 {
-                    Title = "Please select where to save the file",
-                    FileName = destFileName,
-                    ShowHiddenFiles = true,
-                    ShowHelp = false
+                    Title = "Please select the file",
+                    AllowsMultipleSelection = true
                 };
 
-                if (sfd.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                app.Run(sd);
+
+                if (string.IsNullOrEmpty(sd.FileName))
                 {
-                    MessageBox.ErrorQuery(App!, "DSFiles Manager", "Operation cancelled", "ok", "retry");
+                    MessageBox.ErrorQuery(app!, "DSFiles Manager", "Operation cancelled", "ok", "retry");
                     return;
                 }
 
@@ -62,7 +62,7 @@ namespace DSFiles_Client.CGuis
                     {
                         DiscordFilesSpliter.ConsoleProgress = WindowsHelper.GetProgress();
 
-                        string filename = sfd.FileName;
+                        string filename = sd.FileName;
 
                         Console.WriteLine();
 
@@ -71,17 +71,11 @@ namespace DSFiles_Client.CGuis
                             await DiscordFilesSpliter.Decode(seed, key, fs);
                         }
 
-                        //byte[] fileSeed = Convert.FromBase64String("AQMgxMbmo5kPC0BEaaeFEhAUUEQAq4USEB4whI2uhRIQCgDEV7GFEhA=");
-
-                        //WFIMEncoder.Decode(fileSeed, "resultado.zip").GetAwaiter().GetResult();
-
-                        //Console.WriteLine(Convert.ToBase64String(WFIMEncoder.Decode(fileSeed).Result).ToString());
-
                         await Task.Delay(2000);
                     })
                 };
 
-                App.Run(prog);
+                app.Run(prog);
             };
         }
     }

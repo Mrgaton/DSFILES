@@ -1,4 +1,4 @@
-﻿namespace DSFiles_Shared
+namespace DSFiles_Shared
 {
     public static class Snowflake
     {
@@ -9,10 +9,10 @@
         private const int ProcessBits = 5;
         private const int IncrBits = 12;
 
-        private const ulong MaxTimestampField = (1UL << TimestampBits) - 1; // 42 bits
-        private const int MaxWorker = (1 << WorkerBits) - 1;      // 31
-        private const int MaxProcess = (1 << ProcessBits) - 1;     // 31
-        private const int MaxIncrement = (1 << IncrBits) - 1;        // 4095
+        private const ulong MaxTimestampField = (1UL << TimestampBits) - 1;
+        private const int MaxWorker = (1 << WorkerBits) - 1;
+        private const int MaxProcess = (1 << ProcessBits) - 1;
+        private const int MaxIncrement = (1 << IncrBits) - 1;
 
         public static Parts Decompose(ulong snowflake)
         {

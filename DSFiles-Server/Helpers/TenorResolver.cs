@@ -1,13 +1,13 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace DSFiles_Server.Helpers
 {
     internal static class TenorResolver
     {
-        public static string Resovlve(string url)
+        public static async Task<string> Resolve(string url, CancellationToken ct)
         {
-            string html = Encoding.UTF8.GetString(Program.client.GetByteArrayAsync(url).Result);
+            string html = Encoding.UTF8.GetString(await PublicHttp.GetBytes(url, 2 * 1024 * 1024, ct));
             var scripts = html.Split(new string[] { "<script id=\"store-cache\" type=\"text/x-cache\" nonce=\"" }, StringSplitOptions.None);
 
             foreach (var el in scripts)
